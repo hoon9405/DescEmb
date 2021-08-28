@@ -14,6 +14,7 @@ def main():
     # default setting
     parser.add_argument('--input_path', type=str, default='/home/ghhur/data/input/')
     parser.add_argument('--output_path', type=str, default='/home/ghhur/data/output/NIPS_output/')
+    parser.add_argument('--pretrain_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
 
     # dataset
     parser.add_argument('--source_file', choices=['mimic', 'eicu', 'pooled'], type=str, default='mimic')
@@ -56,9 +57,8 @@ def main():
 
     # mode
     parser.add_argument('--embed_model_mode', choices=['CodeEmb-RD', 'CodeEmb-W2V' 'BERT-CLS-FT', 'BERT-FT', 
-            'BERT-Scr', 'BERT-FT+MLM', 'RNN-Scr', 'RNN-Scr+MLM', 'MLM-pretrain-BERT', 'MLM-pretrain-RNN'], default='CodeEmb-RD')
-    parser.add_argument('--debug', action='store_true')
- 
+            'BERT-Scr', 'BERT-FT+MLM', 'RNN-Scr', 'RNN-Scr+MLM', 'W2V-pretrain', 'MLM-pretrain-BERT', 'MLM-pretrain-RNN'], default='CodeEmb-RD')
+
     
     
     args = parser.parse_args()
@@ -73,12 +73,16 @@ def main():
     SEED = [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029]
 
     print(f"Training Mode : {args.embed_model_mode}" )
-    if args.embed_model_mode != 'pretrain':
-            from trainers.base_trainer import Trainer
-
-    if args.bert_model == 'rnn' and args.textencoder_mlm_probability > 0.0 and args.target == 'pretrain':
-        from trainers.rnn_textencoder_trainer import RNNTextencoderTrainer as Trainer
+    if args.embed_model_mode == 'W2V-pretrain':
+        from trainers.Word2Vec_trainer import Trainer
         SEED = [2020]
+
+    elif args.embed_model_mode in ['MLM-pretrain-BERT', 'MLM-pretrain-RNN']:
+        from trainers.textencoder_bert_MLM_trainer import Trainer
+        SEED = [2020]
+
+    else:
+        from trainers.base_trainer import Trainer
 
 
     mp.set_sharing_strategy('file_system')
