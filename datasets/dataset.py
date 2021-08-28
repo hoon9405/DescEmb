@@ -1,11 +1,13 @@
-import os
-
-import numpy as np
-
 import torch
 import torch.utils.data
 
 import pandas as pd
+import random
+import collections
+import os
+import numpy as np
+
+
 
 from transformers import AutoTokenizer
 
@@ -394,3 +396,89 @@ class TokenizedSSLDataset(BaseDataset):
                 'attention_mask': attn_mask,
                 'seq_len': seq_len,
             }
+
+
+class Word2VecDataset(Dataset):
+    def __init__(self, args):
+        super().__init__()
+        data = args.dataset
+        self.task = args.task
+        # TODO 변경하기
+        self.path = args.input_path
+        if data == 'mimic':
+            file_path = os.path.join(self.path, 'mimic_input_input_index')
+            file_path = file_path + f'_{args.value_embed_type}.npy'
+        elif data == 'eicu':
+            file_path = os.path.join(self.path, f'eicu_input_input_index')
+            file_path = file_path + f'_{args.value_embed_type}.npy'
+
+        data = np.load(file_path)
+        data = self.indexing(data, args.dataset, args.seed)
+        self.pos_pair, self.neg_pair = self.preprocess(data)
+        self.pos_pair.pop(0)
+        self.index_dict = {i: k for i, k in enumerate(self.pos_pair.keys())}
+
+    def __len__(self):
+        return len(self.pos_pair)
+
+    def __getitem__(self, item):
+        item = self.index_dict[item]
+        try:
+            pos = random.sample(self.pos_pair[item], 5)
+        except ValueError:
+            pos = random.choices(self.pos_pair[item], k=5)
+        try:
+            neg = random.sample(self.neg_pair[item], 30)
+        except ValueError:
+            neg = random.choices(self.neg_pair[item], k=30)
+        return torch.LongTensor([item]), torch.LongTensor(pos), torch.LongTensor(neg)
+
+    def indexing(self, data, dataname, seed):
+        hit = 1
+
+        df = pd.read_csv(os.path.join(self.path, 'fold', f'{dataname}_{seed}_fold_split.csv'))
+        splits = df[self.task].values
+        idcs = np.where(splits == hit)[0]
+
+        data = data[idcs]
+        return data
+
+    def preprocess(self, mimic):
+        pos_pair = {}
+        skip_window=15
+        for index in range(mimic.shape[0]):
+            data = mimic[index]
+            data_index = 0
+            span = 2 * skip_window + 1  # [ skip_window, target, skip_window ]
+            buffer = collections.deque(maxlen=span)
+            for _ in range(span):
+                buffer.append(data[data_index])
+                data_index = (data_index + 1) % len(data)
+
+            for m in range(skip_window):
+                try:
+                    pos_pair[buffer[m]].extend(list(set(list(buffer))))
+                except KeyError:
+                    pos_pair[buffer[m]] = list(set(list(buffer)))
+
+            for i in range(np.nonzero(data)[0].max() - skip_window):
+                key = buffer[skip_window]
+                if buffer[skip_window] == 0:
+                    continue
+                try:
+                    pos_pair[key].extend(list(set(list(buffer))))
+                except KeyError:
+                    pos_pair[key] = list(set(list(buffer)))
+
+                buffer.append(data[data_index])
+                data_index = (data_index + 1) % len(data)
+            data_index = (data_index + len(data) - span) % len(data)
+
+        pos_pair = {k: list(set(v)) for k, v in pos_pair.items()}
+
+        # negative_pair
+        max_num = mimic.max()
+
+        neg_pair = {k:list(set(v) ^ set(list(np.arange(3, max_num)))) for k, v in pos_pair.items()}
+
+        return pos_pair, neg_pair
