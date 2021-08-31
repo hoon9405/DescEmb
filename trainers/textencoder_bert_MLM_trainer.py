@@ -9,6 +9,7 @@ import tqdm
 from transformers import AutoConfig, BertForMaskedLM
 from datasets.dataset import *
 from models.textencoder_rnn import TextEncoder_RNN
+from models.textencoder_bert import TextEncoder_BERT
 
 class TextEncoderBert_MLM_Trainer():
     def __init__(self, args, device):
@@ -29,29 +30,22 @@ class TextEncoderBert_MLM_Trainer():
         
         self.dataset = TokenizedDataset
         self.train_dataloader = DataLoader(self.dataset(args, 'train'), batch_size = args.batch_size, num_workers=8, shuffle = True)
-    
 
         # For BERTs
         if self.embed_model_mode == 'MLM-pretrain-BERT':
-            bert_model_config = {'bert': ["bert-base-uncased", 768],
-                                 'bio_clinical_bert': ["emilyalsentzer/Bio_ClinicalBERT", 768],
-                                 'pubmed_bert': ["microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", 768],
-                                 'blue_bert': ["bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12", 768],
-                                 'bio_bert': ["dmis-lab/biobert-v1.1", 768],
-                                 'bert_tiny': ["google/bert_uncased_L-2_H-128_A-2", 128],
-                                 'bert_mini': ["google/bert_uncased_L-4_H-256_A-4", 256],
-                                 'bert_small': ["google/bert_uncased_L-4_H-512_A-8", 512]}
+            self.model = TextEncoder_BERT(args).cuda()
 
-            # BertForMaksedLM
-            if args.load_bert_scratch is True:
-              config = AutoConfig.from_pretrained(bert_model_config[args.text_encoder_model][0])
-              self.model = BertForMaskedLM(config).to(self.device)
-            else:
-              self.model = BertForMaskedLM.from_pretrained(bert_model_config[args.text_encoder_model][0]).to(self.device)
+            # # BertForMaksedLM
+            # if args.load_bert_scratch is True:
+            #   config = AutoConfig.from_pretrained(bert_model_config[args.text_encoder_model][0])
+            #   self.model = BertForMaskedLM(config).to(self.device)
+            # else:
+            #   self.model = BertForMaskedLM.from_pretrained(bert_model_config[args.text_encoder_model][0]).to(self.device)
 
         elif self.embed_model_mode == 'MLM-pretrain-RNN':
             self.model = TextEncoder_RNN(args).to(device)
-            self.criterion = nn.CrossEntropyLoss(ignore_index=-100)
+
+        self.criterion = nn.CrossEntropyLoss(ignore_index=-100)
 
         # optimizer and scheduler
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.lr)
@@ -87,8 +81,14 @@ class TextEncoderBert_MLM_Trainer():
             print('epoch :', n_epoch)
             for iter, sample in tqdm.tqdm(enumerate(self.train_dataloader)):
                 self.optimizer.zero_grad(set_to_none=True)            
+
+                # TODO parse하는 부분 확인하기
+
                 x = self.parse_sample(sample)
-                x['labels']= sample['mlm_labels'].to(self.device) 
+                mlm_labels = sample['mlm_labels'].to(self.device)
+                _, mlm_output = self.model(x)
+                loss = self.criterion(mlm_output.view(-1, 28996), mlm_labels.reshape(-1))
+
                 output = self.model(**x)
           
                 # input shape = (B,SXW)
