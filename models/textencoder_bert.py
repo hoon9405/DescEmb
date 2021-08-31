@@ -72,9 +72,6 @@ class TextEncoder_BERT(nn.Module):
         x = self.compress_fc(x)
 
         output = x.reshape(bsz, -1, self.pred_embed_dim)  # x, shape of (B, S, E)
-        #print('pre-BERT forward calculation DOEN!')
-        #print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
-
         return output
 
     def mlm_forward(self, x):
