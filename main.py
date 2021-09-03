@@ -13,8 +13,8 @@ def main():
 
     # default setting
     parser.add_argument('--input_path', type=str, default='/home/ghhur/data/input/')
-    parser.add_argument('--output_path', type=str, default='/home/ghhur/data/output/NIPS_output/')
-    parser.add_argument('--pretrain_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
+    parser.add_argument('--save_path', type=str, default='/home/ghhur/data/output/NIPS_output/checkpoints/')
+    parser.add_argument('--model_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
 
     # dataset
     parser.add_argument('--source_file', choices=['mimic', 'eicu', 'pooled'], type=str, default='mimic')
@@ -29,12 +29,9 @@ def main():
 
     # enc model
     parser.add_argument('--text_encoder_model', choices=['bert', 'bio_clinical_bert', 'bio_bert', 'pubmed_bert', 'blue_bert', 'bert_mini', 'bert_tiny', 'bert_small', 'rnn'], type=str)
-    parser.add_argument('--text_encoder_rnn_model', choices=['gru', 'lstm'], type=str, default='gru')
     parser.add_argument('--text_encoder_embed_dim', type=int, default=128)
     parser.add_argument('--text_encoder_hidden_dim', type=int, default=256)
 
-    # pred model
-    parser.add_argument('--pred_rnn_model', choices=['gru', 'lstm'], type=str, default='gru')
     
     parser.add_argument('--rnn_layer', type=int, default=1)
     parser.add_argument('--dropout', type=int, default=0.3)
@@ -48,6 +45,8 @@ def main():
     # pretrain & finetune
     parser.add_argument('--mlm_probability', type=float, default=0.0)
     parser.add_argument('--load_bert_scratch', action='store_true')
+    parser.add_argument('--load_pretrained_weights', action='store_true')
+
     parser.add_argument('--transfer', type=str, 
                 help = "example = {'lr':1e-4, 'epoch':400, 'src':'mimic', 'model':'bert_tiny'}") # should be finxed 
     
