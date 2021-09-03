@@ -4,19 +4,21 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import wandb
 import os
 import tqdm
-from dataset.dataset import *
 from torch.utils.data import DataLoader
 from models.rnn_models import *
-from models.transformer import Transformer
 from utils.loss import *
 from utils.trainer_utils import *
+
+from datasets import (
+  Dataset,
+  TokenizedDataset
+)
 
 from models.EHRmodel import EHRModel
 from models.layers import Code_Inputlayer, Desc_InputLayer
 from models.textencoder_bert import TextEncoder_BERT
 from models.textencoder_rnn import TextEncoder_RNN
 from models.rnn_models import RNNModels
-from models.transformer import Transformer
 
 
 class Trainer:
@@ -29,8 +31,8 @@ class Trainer:
         self.source_file = args.source_file
         self.lr = args.lr
         self.n_epochs = args.n_epochs
-        self.target =args.target
-        self.embed_model_mode =args.embed_model_mode
+        self.target = args.target
+        self.embed_model_mode = args.embed_model_mode
         self.pred_model_mode = args.pred_model_mode
         self.mlm_prob = args.textencoder_mlm_probability
         self.concat_type = args.concat_type
