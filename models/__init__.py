@@ -1,13 +1,46 @@
-from EHRmodel import EHRModel
-from layers import CodeInputLayer, SubwordInputLayer
-from rnn import RNNModel
-from text_encoder import BertTextEncoder, RNNTextEncoder
+import importlib
+import os
 
-__all__ = [
-    "EHRModel",
-    "CodeInputLayer",
-    "SubwordInputLayer",
-    "RNNModel",
-    "BertTextEncoder",
-    "RNNTextEncoder"
-]
+MODEL_REGISTRY = {}
+
+def build_model(args):
+    model = None
+    model_type = getattr(args, "model", None)
+
+    if model_type in MODEL_REGISTRY:
+        model = MODEL_REGISTRY[model_type]
+    
+    assert model is not None, (
+        f"Could not infer model type from {model_type}. "
+        f"Available models: "
+        + str(MODEL_REGISTRY.keys())
+        + " Requested model type: "
+        + model_type
+    )
+
+    return model.build_model(args)
+
+def register_model(name):
+    """
+    New model types can be added with the :func:`register_model`
+    function decorator.
+
+    For example:
+
+        @register_model('descemb_bert')
+        class BertTextEncoder(nn.Module):
+            (...)
+
+    Args:
+        name (str): the name of the model
+    """
+
+    def register_model_cls(cls):
+        if name in MODEL_REGISTRY:
+            raise ValueError(f"Cannot register duplicate model ({name})")
+
+        MODEL_REGISTRY[name] = cls
+
+        return cls
+
+    return register_model_cls

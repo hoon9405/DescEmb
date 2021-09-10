@@ -126,5 +126,11 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Experimental Folder
+outputs/*
+
+# Weights and Biases logs
+wandb/
+
 # Pyre type checker
 .pyre/

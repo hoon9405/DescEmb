@@ -1,14 +1,9 @@
-import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from models.layers import OutputLayer
+from models import register_model
 
-"""
-To-Do : (max, avg) pooling 어떻게 할지? 
-        n_layers, dropout 도 argument로 받을 것인지
-"""
-
+@register_model("rnn")
 class RNNModel(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -36,6 +31,10 @@ class RNNModel(nn.Module):
             18 if args.target == 'diagnosis' else 1
         )
 
+    @classmethod
+    def build_model(cls, args):
+        """Build a new model instance."""
+        return cls(args)
 
     def forward(self, x, lengths):
         self.model.flatten_parameters()
