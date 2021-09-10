@@ -1,106 +1,192 @@
+import argparse
+import logging
+import logging.config
+import random
+import os
+import sys
+
+# should setup root logger before importing any relevant libraries.
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)s %(name)s %(message)s)))",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level = os.environ.get("LOGLEVEL", "INFO").upper(),
+    stream = sys.stdout
+)
+logger = logging.getLogger(__name__)
+
+import numpy as np
+
 import torch
 import torch.multiprocessing as mp
 
-import random
-import numpy as np
-import argparse
-import os
+from trainers.base_trainer import Trainer
 
 
-def main():
+def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device_number', type=str)
+    parser.add_argument(
+        '--device', type=str,
+        help="cuda visible devices"
+    )
 
     # default setting
     parser.add_argument('--input_path', type=str, default='/home/ghhur/data/input/')
-    parser.add_argument('--save_path', type=str, default='/home/ghhur/data/output/NIPS_output/checkpoints/')
     parser.add_argument('--model_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
+    parser.add_argument('--save_dir', type=str, default='checkpoints')
+    parser.add_argument('--save_prefix', type=str, default='checkpoint')
 
     # dataset
-    parser.add_argument('--source_file', choices=['mimic', 'eicu', 'pooled'], type=str, default='mimic')
-    parser.add_argument('--target_task', choices=['Readm', 'Mort', 'Los_3', 'Los_7', 'Dx'], type=str, default='Readm')
+    parser.add_argument('--data', choices=['mimic', 'eicu', 'pooled'], type=str, required=True)
+    parser.add_argument('--eval_data', choicse=['mimic', 'eicu', 'pooled'], type=str, default=None, required=False)
+    parser.add_argument('--value_embed_type', choices=['VA','DSVA','DSVA_DPE','VC', 'nonconcat'], default='VA')
+    parser.add_argument('--fold', type=str, default=None)
+    parser.add_argument('--valid_subsets', type=str, default="valid, test")
+
+    parser.add_argument(
+        '--task',
+        choices=['mlm', 'w2v', 'readmission', 'mortality', 'los_3day', 'los_7day', 'diagnosis'],
+        type=str,
+        default='readmission',
+        help=""
+    )
 
     # trainer
-    parser.add_argument('--ratio', choices=['0', '10', '30', '50', '70', '90', '100'], type=str, default= None)
+    parser.add_argument('--seed', type=int, default=2021)
+    parser.add_argument('--ratio', choices=['10', '30', '50', '70', '90', '100'], type=str, default= None)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--value_embed_type', choices=['VA','DSVA','DSVA+DPE','VC'], default='VA')
-
-    # enc model
-    parser.add_argument('--text_encoder_model', choices=['bert', 'bio_clinical_bert', 'bio_bert', 'pubmed_bert', 'blue_bert', 'bert_mini', 'bert_tiny', 'bert_small', 'rnn'], type=str)
-    parser.add_argument('--text_encoder_embed_dim', type=int, default=128)
-    parser.add_argument('--text_encoder_hidden_dim', type=int, default=256)
-
     
+
     parser.add_argument('--rnn_layer', type=int, default=1)
     parser.add_argument('--dropout', type=int, default=0.3)
     parser.add_argument('--pred_embed_dim', type=int, default=128)
     parser.add_argument('--pred_hidden_dim ', type=int, default=256)
 
-    # wnadb setting
-    parser.add_argument('--wandb_project_name', type=str)
-    parser.add_argument('--wandb_run_name', type=str)
+    # wandb setting
+    # parser.add_argument('--wandb_project_name', type=str)
+    # parser.add_argument('--wandb_run_name', type=str)
 
-    # pretrain & finetune
-    parser.add_argument('--mlm_probability', type=float, default=0.0)
-    parser.add_argument('--load_bert_scratch', action='store_true')
+    # mlm pretrain & finetune
+    parser.add_argument('--mlm_prob', type=float, default=0.0)
     parser.add_argument('--load_pretrained_weights', action='store_true')
 
-    parser.add_argument('--transfer', type=str, 
-                help = "example = {'lr':1e-4, 'epoch':400, 'src':'mimic', 'model':'bert_tiny'}") # should be finxed 
+    # parser.add_argument('--transfer', type=str, 
+    #             help = "example = {'lr':1e-4, 'epoch':400, 'src':'mimic', 'model':'bert_tiny'}") # should be finxed 
     
-    # for transfer_fewshot
-    parser.add_argument('--transfer_fewshot', action = 'store_true')
+    # for transfer
+    parser.add_argument("--transfer", action="store_true")
     parser.add_argument('--dest_file', choices = ['mimic', 'eicu'], default = 'eicu') 
 
-    # mode
-    parser.add_argument('--embed_model_mode', choices=['CodeEmb-RD', 'CodeEmb-W2V' 'BERT-CLS-FT', 'BERT-FT', 
-            'BERT-Scr', 'BERT-FT+MLM', 'RNN-Scr', 'RNN-Scr+MLM', 'W2V-pretrain', 'MLM-pretrain-BERT', 'MLM-pretrain-RNN'], default='CodeEmb-RD')
+    # model
+    parser.add_argument(
+        '--model', type=str, required=True,
+        help='name of the model to be trained'
+    )
+    parser.add_argument(
+        '--embed_model', type=str, required=False,
+        help='name of the encoder model in the --model, '
+            'only used when --model has encoder-predictor structure'
+    )
+    parser.add_argument(
+        '--pred_model', type=str, required=False,
+        help='name of the predictor model in the --model, '
+            'only used when --model has encoder-predictor structure'
+    )
+    parser.add_argument('--init_bert_params', action='store_true')
+    parser.add_argument('--init_bert_params_with_freeze', action='store_true')
 
-    
-    
-    args = parser.parse_args()
+    # parser.add_argument('--embed_model_mode', choices=['CodeEmb-RD', 'CodeEmb-W2V' 'BERT-CLS-FT', 'BERT-FT', 
+    #         'BERT-Scr', 'BERT-FT+MLM', 'RNN-Scr', 'RNN-Scr+MLM', 'W2V-pretrain', 'MLM-pretrain-BERT', 'MLM-pretrain-RNN'], default='CodeEmb-RD')
 
-    if (args.wandb_project_name is None) and (args.debug==False):
-        raise AssertionError('wandb project name should not be null')
+    return parser
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device_number)
+def main():
+    args = get_parser().parse_args()
+    set_struct(vars(args))
+
+    args.valid_subsets = args.valid_subsets.replace(' ','').split(',')
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # print(f"Training Mode : {args.embed_model_mode}" )
+    # if args.embed_model_mode == 'W2V-pretrain':
+    #     from trainers.Word2Vec_trainer import Trainer
+    #     SEED = [2020]
 
-    SEED = [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029]
-
-    print(f"Training Mode : {args.embed_model_mode}" )
-    if args.embed_model_mode == 'W2V-pretrain':
-        from trainers.Word2Vec_trainer import Trainer
-        SEED = [2020]
-
-    elif args.embed_model_mode in ['MLM-pretrain-BERT', 'MLM-pretrain-RNN']:
-        from trainers.textencoder_bert_MLM_trainer import Trainer
-        SEED = [2020]
-
-    else:
-        from trainers.base_trainer import Trainer
+    # elif args.embed_model_mode in ['MLM-pretrain-BERT', 'MLM-pretrain-RNN']:
+    #     from trainers.textencoder_bert_MLM_trainer import Trainer
+    #     SEED = [2020]
+    # else:
+    #     from trainers.base_trainer import Trainer
 
 
     mp.set_sharing_strategy('file_system')
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)  # if use multi-GPU
+    torch.backends.cudnn.deterministic = True
 
-    for seed in SEED:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # if use multi-GPU
-        torch.backends.cudnn.deterministic = True
+    trainer = Trainer(args)
+    trainer.train()
+    logger.info("done training")
 
-        args.seed = seed
-        print('seed_number', args.seed)
 
-        trainer = Trainer(args, device)
-        trainer.train()
-                
-        print('Finished training seed: {}'.format(seed))
+def set_struct(cfg: dict):
+    root = os.path.abspath(
+        os.path.dirname(__file__)
+    )
+    from datetime import datetime
+    now = datetime.now()
+    from pytz import timezone
+    # apply timezone manually
+    now = now.astimezone(timezone('Asia/Seoul'))
+
+    output_dir = os.path.join(
+        root,
+        "outputs",
+        now.strftime("%Y-%m-%d"),
+        now.strftime("%H-%M-%S")
+    )
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    os.chdir(output_dir)
+
+    job_logging_cfg = {
+        'version': 1,
+        'formatters': {
+            'simple': {
+                'format': '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
+            }
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler', 'formatter': 'simple', 'stream': 'ext://sys.stdout'
+            },
+            'file': {
+                'class': 'logging.FileHandler', 'formatter': 'simple', 'filename': 'train.log'
+            }
+        },
+        'root': {
+            'level': 'INFO', 'handlers': ['console', 'file']
+            },
+        'disable_existing_loggers': False
+    }
+    logging.config.dictConfig(job_logging_cfg)
+
+    cfg_dir = ".config"
+    os.mkdir(cfg_dir)
+    os.mkdir(cfg['save_dir'])
+
+    with open(os.path.join(cfg_dir, "config.yaml"), "w") as f:
+        for k, v in cfg.items():
+            print("{}: {}".format(k, v), file=f)
+
 
 if __name__ == '__main__':
     main()
