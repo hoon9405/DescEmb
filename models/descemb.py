@@ -44,7 +44,7 @@ class BertTextEncoder(nn.Module):
             self.mlm_proj = nn.Linear(bert_model_config[args.bert_model][1], 28996)
         self.post_encode_proj = nn.Linear(bert_model_config[args.bert_model][1], self.pred_embed_dim)
 
-        if args.concat_type =='DSVA_DPE':
+        if args.value_embed_type =='DSVA_DPE':
             old_token_type_embeddings = self.model.embeddings.token_type_embeddings
             new_token_type_embeddings = self.model._get_resized_embeddings(old_token_type_embeddings, 28)
             self.model.embeddings.token_type_embeddings = new_token_type_embeddings
@@ -55,12 +55,11 @@ class BertTextEncoder(nn.Module):
                 "Preparing to load pre-trained checkpoint {}".format(args.model_path)
             )
             state_dict = torch.load(args.model_path)['model_state_dict']
-            #XXX check
             state_dict = {
-                k: v.lstrip('bert.')
-                for k, v in state_dict.items() if 'cls' not in k
+                k: v for k, v in state_dict.items()
+                if 'mlm' not in k
             }
-            self.model.load_state_dict(state_dict, strict=True)
+            self.load_state_dict(state_dict, strict=True)
 
             logger.info(
                 "Loaded checkpoint {}".format(
@@ -74,12 +73,19 @@ class BertTextEncoder(nn.Module):
         return cls(args)
 
     def get_logits(self, net_output):
+        if net_output.dim() > 2:
+            net_output = net_output.view(-1, net_output.size(-1))
         return net_output.float()
 
     def get_targets(self, sample):
-        return sample['label'].float()
+        target = sample['label']
+        if target.dim() > 1:
+            target = target.view(-1)
+        return target.long()
 
     def forward(self, input_ids, token_type_ids, attention_mask, **kwargs):
+        if input_ids.dim() == 2:
+            input_ids = input_ids.unsqueeze(1)
         bsz, _, word_max_len = input_ids.shape
 
         bert_args = {
@@ -99,21 +105,22 @@ class BertTextEncoder(nn.Module):
         if self.mlm_proj:
             mlm_output = self.mlm_proj(bert_outputs[0]) # (B x S, W, H) -> (B x S, W, Bert-vocab)
             return mlm_output
+
         return net_output
-    
+
 @register_model("descemb_rnn")
 class RNNTextEncoder(nn.Module):
     def __init__(self, args):
         super().__init__()
 
-        self.text_embed_dim = args.text_embed_dim
-        self.text_hidden_size = args.text_hidden_size
+        self.enc_embed_dim = args.enc_embed_dim
+        self.enc_hidden_dim = args.enc_hidden_dim
         self.pred_embed_dim = args.pred_embed_dim
         self.subword_embed_layer = SubwordInputLayer(args)
         self.value_embed_type = args.value_embed_type
         self.model = nn.GRU(
-            self.text_embed_dim,
-            self.text_hidden_size,
+            self.enc_embed_dim,
+            self.enc_hidden_dim,
             num_layers=1,
             dropout=args.dropout,
             batch_first=True,
@@ -125,12 +132,12 @@ class RNNTextEncoder(nn.Module):
         self.mlm_proj = None
 
         if args.task == "mlm":
-            self.mlm_proj = nn.Linear(self.text_hidden_size * 2, 28996)
+            self.mlm_proj = nn.Linear(self.enc_hidden_dim * 2, 28996)
 
         if self.mlm_proj is None and self.value_embed_type == 'DSVA_DPE':
-            self.value_embedding = nn.Embedding(28, self.text_embed_dim)
+            self.value_embedding = nn.Embedding(28, self.enc_embed_dim)
 
-        self.post_encode_proj = nn.Linear(self.text_hidden_size * 2, self.pred_embed_dim)
+        self.post_encode_proj = nn.Linear(self.enc_hidden_dim * 2, self.pred_embed_dim)
     
         if not args.transfer and args.load_pretrained_weights:
             assert args.model_path, args.model_path
@@ -138,7 +145,11 @@ class RNNTextEncoder(nn.Module):
                 "Preparing to load pre-trained checkpoint {}".format(args.model_path)
             )
             state_dict = torch.load(args.model_path)['model_state_dict']
-            self.model.load_state_dict(state_dict, strict=True)
+            state_dict = {
+                k: v for k, v in state_dict.items()
+                if 'mlm' not in k
+            }
+            self.load_state_dict(state_dict, strict=True)
             logger.info(
                 "Loaded checkpoint {}".format(
                     args.model_path
@@ -151,25 +162,31 @@ class RNNTextEncoder(nn.Module):
         return cls(args)
 
     def get_logits(self, net_output):
+        if net_output.dim() > 2:
+            net_output = net_output.view(-1, net_output.size(-1))
         return net_output.float()
 
     def get_targets(self, sample):
-        return sample['label'].float()
+        target = sample['label']
+        if target.dim() > 1:
+            target = target.view(-1)
+        return target.long()
 
     def forward(self, input_ids, token_type_ids, **kwargs):
         if self.mlm_proj is None:
+            bsz, _, word_max_len = input_ids.shape
+
             self.model.flatten_parameters()
             if self.value_embedding:
                 type_ids = self.type_embedding(
-                    token_type_ids.view(-1, input_ids.size(-1))
+                    token_type_ids.view(-1, word_max_len)
                 )
-            input_ids = input_ids.view(-1, input_ids.size(-1))
-        # XXX input_ids.shape: (bsz, word_max_len) when mlm ?
-
-        bsz, word_max_len = input_ids.shape
+            input_ids = input_ids.view(-1, word_max_len)
+        else:
+            bsz, word_max_len = input_ids.shape
 
         lengths = torch.argmin(input_ids, dim=1)
-        lengths = torch.where(lengths > 0, lengths, input_ids.size(-1)).detach().cpu()
+        lengths = torch.where(lengths > 0, lengths, 1).detach().cpu()
 
         x = self.subword_embed_layer(input_ids)
 
@@ -187,9 +204,8 @@ class RNNTextEncoder(nn.Module):
             mlm_output = torch.cat((mlm_output, padding), dim=1)
             return mlm_output
         
-        i = range(bsz)
-        forward_output = output_seq[i, lengths - 1, :self.text_hidden_size]
-        backward_output = output_seq[:, 0, self.text_hidden_size:]
+        forward_output = output_seq[:, -1, :self.enc_hidden_dim]
+        backward_output = output_seq[:, 0, self.enc_hidden_dim:]
         net_output = torch.cat((forward_output, backward_output), dim=-1)
 
         net_output = (

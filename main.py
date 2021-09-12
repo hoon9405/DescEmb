@@ -19,25 +19,35 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 
-from trainers.base_trainer import Trainer
-
+from trainers import Trainer, Word2VecTrainer
 
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--device', type=str,
-        help="cuda visible devices"
+        '--distributed_world_size', type=int, default=1
     )
 
-    # default setting
+    # checkpoint configs
     parser.add_argument('--input_path', type=str, default='/home/ghhur/data/input/')
     parser.add_argument('--model_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
     parser.add_argument('--save_dir', type=str, default='checkpoints')
     parser.add_argument('--save_prefix', type=str, default='checkpoint')
 
+    parser.add_argument(
+        '--patience', type=int, default=-1,
+        help= (
+            'early stop training if valid performance does not '
+            + 'improve for N consecutive validation runs'
+        )
+    )
+    parser.add_argument(
+        '--disable_validation', action='store_true',
+        help='disable validation'
+    )
+
     # dataset
     parser.add_argument('--data', choices=['mimic', 'eicu', 'pooled'], type=str, required=True)
-    parser.add_argument('--eval_data', choicse=['mimic', 'eicu', 'pooled'], type=str, default=None, required=False)
+    parser.add_argument('--eval_data', choices=['mimic', 'eicu', 'pooled'], type=str, default=None, required=False)
     parser.add_argument('--value_embed_type', choices=['VA','DSVA','DSVA_DPE','VC', 'nonconcat'], default='VA')
     parser.add_argument('--fold', type=str, default=None)
     parser.add_argument('--valid_subsets', type=str, default="valid, test")
@@ -57,18 +67,22 @@ def get_parser():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--batch_size', type=int, default=512)
     
+    # encoder model configs
+    parser.add_argument('--enc_embed_dim', type=int, default=128)
+    parser.add_argument('--enc_hidden_dim', type=int, default=256)
 
+    # predictive model configs
     parser.add_argument('--rnn_layer', type=int, default=1)
     parser.add_argument('--dropout', type=int, default=0.3)
     parser.add_argument('--pred_embed_dim', type=int, default=128)
-    parser.add_argument('--pred_hidden_dim ', type=int, default=256)
+    parser.add_argument('--pred_hidden_dim', type=int, default=256)
 
     # wandb setting
     # parser.add_argument('--wandb_project_name', type=str)
     # parser.add_argument('--wandb_run_name', type=str)
 
     # mlm pretrain & finetune
-    parser.add_argument('--mlm_prob', type=float, default=0.0)
+    parser.add_argument('--mlm_prob', type=float, default=0.3)
     parser.add_argument('--load_pretrained_weights', action='store_true')
 
     # parser.add_argument('--transfer', type=str, 
@@ -76,7 +90,7 @@ def get_parser():
     
     # for transfer
     parser.add_argument("--transfer", action="store_true")
-    parser.add_argument('--dest_file', choices = ['mimic', 'eicu'], default = 'eicu') 
+    # parser.add_argument('--dest_file', choices = ['mimic', 'eicu'], default = 'eicu') 
 
     # model
     parser.add_argument(
@@ -93,6 +107,8 @@ def get_parser():
         help='name of the predictor model in the --model, '
             'only used when --model has encoder-predictor structure'
     )
+
+    parser.add_argument('--bert_model', choices=['bert', 'bert_tiny', 'bert_mini'], type=str, default='bert_tiny')
     parser.add_argument('--init_bert_params', action='store_true')
     parser.add_argument('--init_bert_params_with_freeze', action='store_true')
 
@@ -103,13 +119,18 @@ def get_parser():
 
 def main():
     args = get_parser().parse_args()
+    args.valid_subsets = (
+        args.valid_subsets.replace(' ','').split(',')
+        if (
+            not args.disable_validation
+            and args.task not in ['mlm', 'w2v']
+            and args.valid_subsets
+        )
+        else []
+    )
+    args.device_ids = list(range(args.distributed_world_size))
     set_struct(vars(args))
 
-    args.valid_subsets = args.valid_subsets.replace(' ','').split(',')
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
     # print(f"Training Mode : {args.embed_model_mode}" )
     # if args.embed_model_mode == 'W2V-pretrain':
     #     from trainers.Word2Vec_trainer import Trainer

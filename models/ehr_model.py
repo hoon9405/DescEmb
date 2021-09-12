@@ -1,7 +1,12 @@
+import os
+import logging
+
 import torch
 import torch.nn as nn
 
 from models import register_model, MODEL_REGISTRY
+
+logger = logging.getLogger(__name__)
 
 @register_model("ehr_model")
 class EHRModel(nn.Module):
@@ -9,16 +14,39 @@ class EHRModel(nn.Module):
         super().__init__()
         self.args = args
 
+        if args.transfer and args.load_pretrained_weights:
+            logger.warn(
+                "--transfer and --load_pretrained_weights are set simultaneously. "
+                "--load_pretrained_weights is ignored."
+            )
+            args.load_pretrained_weights = False
+
         self.val_proj = None
         self.final_proj = None
         
-        if args.concat_type == 'VC':
+        if args.value_embed_type == 'VC':
             self.val_proj = nn.Linear(1, args.pred_embed_dim)
             self.post_embed_proj = nn.Linear(args.pred_embed_dim*2, args.pred_embed_dim)
 
         self.embed_model = self._embed_model.build_model(args)
         self.pred_model = self._pred_model.build_model(args)
-    
+
+        if args.transfer:
+            logger.info(
+                f"Preparing to transfer pre-trained model {args.model_path}"
+            )
+            state_dict = torch.load(args.model_path)['model_state_dict']
+            state_dict = {
+                k: v for k,v in state_dict.items() if (
+                    args.embed_model.startswith('codeemb')
+                    and 'embedding' not in k
+                )
+            }
+            missing, unexpected = self.load_state_dict(state_dict, strict=False)
+            if unexpected or len(missing) > 1:
+                logger.warn(
+                    'transferred model has missing or unexpected keys.'
+                )
     @property
     def _embed_model(self):
         return MODEL_REGISTRY[self.args.embed_model]

@@ -31,6 +31,7 @@ class BaseDataset(torch.utils.data.Dataset):
             or not (data == 'pooled' and eval_data)
         ), "--eval_data should be set if pooled-learning on prediction tasks"
 
+        self.data = data
         if task in ["mlm", "w2v"]:
             eval_data = data
 
@@ -44,23 +45,25 @@ class BaseDataset(torch.utils.data.Dataset):
         self.data_path = os.path.join(self.input_path, self.prefix)
         self.label_path = os.path.join(self.input_path, "label")
 
-        if fold:
-            self.fold = fold
-        else:
-            self.fold = os.path.join(
-                self.path, "fold", "{}_{}_fold_split_{}.csv".format(
-                    self.prefix, self.seed, self.ratio
-                )
-            )
 
         self.ext = "_" + str(value_embed_type) + ".npy"
         self.task = task
         self.seed = seed
 
+
         self.labels = None
         self.tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 
-        self.ratio = '' if ratio is '100' else '_' + ratio
+        self.ratio = '' if ratio == '100' else '_' + ratio
+
+        if fold:
+            self.fold = fold
+        else:
+            self.fold = os.path.join(
+                self.input_path, "fold", "{}_{}_fold_split{}.csv".format(
+                    self.prefix, self.seed, self.ratio
+                )
+            )
 
     def __len__(self):
         raise NotImplementedError()
@@ -71,9 +74,9 @@ class BaseDataset(torch.utils.data.Dataset):
     def get_fold_indices(self):
         if self.split == 'train':
             hit = 1
-        elif self.type == 'valid':
+        elif self.split == 'valid':
             hit = 2
-        else:
+        elif self.split == 'test':
             hit = 0
     
         df = pd.read_csv(self.fold)
@@ -87,16 +90,15 @@ class BaseDataset(torch.utils.data.Dataset):
         """
         labels = inputs.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.textencoder_mlm_probability`)
-        probability_matrix = torch.full(labels.shape, self.textencoder_mask_prob)
+        probability_matrix = torch.full(labels.shape, self.mlm_prob)
 
         if special_tokens_mask is None:
-            if self.textencoder_ssl == 'reflect_freq':
-                special_tokens_mask = [
-                        self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
-                        ]
-            else:
-                special_tokens_mask = self.tokenizer.get_special_tokens_mask(labels, already_has_special_tokens=True)
-            special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool)
+            special_tokens_mask = torch.tensor(
+                self.tokenizer.get_special_tokens_mask(
+                    labels, already_has_special_tokens=True
+                ),
+                dtype=torch.bool
+            )
         else:
             special_tokens_mask = special_tokens_mask.bool()
        
@@ -197,10 +199,10 @@ class Dataset(BaseDataset):
         if len(samples) == 0:
             return {}
         
-        input = {"input_ids": torch.cat([s["input_ids"] for s in samples])}
-        input["seq_len"] = torch.cat([s["seq_len"] for s in samples])
-        input["value"] = torch.cat(s["label"] for s in samples)
-        out = {"label": torch.cat([s["label"] for s in samples])}
+        input = {"input_ids": torch.stack([s["input_ids"] for s in samples])}
+        input["seq_len"] = torch.stack([s["seq_len"] for s in samples])
+        input["value"] = torch.stack([s["label"] for s in samples])
+        out = {"label": torch.stack([s["label"] for s in samples])}
 
         out["net_input"] = input
         return out
@@ -263,7 +265,7 @@ class TokenizedDataset(BaseDataset):
         )
         self.label = torch.tensor(self.label[hit_idcs], dtype=torch.long)
     
-        logger.info(f"loaded {len(self.input_idcs)} {self.split} samples")
+        logger.info(f"loaded {len(self.input_ids)} {self.split} samples")
 
     def __len__(self):
         return len(self.input_ids)
@@ -289,18 +291,18 @@ class TokenizedDataset(BaseDataset):
         samples = [s for s in samples if s["input_ids"] is not None]
         if len(samples) == 0:
             return {}
-        
-        input = {"input_ids": torch.cat([s["input_ids"] for s in samples])}
-        input["token_type_ids"] = torch.cat([s["token_type_ids"] for s in samples])
-        input["attention_mask"] = torch.cat([s["attention_mask"] for s in samples])
-        input["seq_len"] = torch.cat([s["seq_len"] for s in samples])
-        input["value"] = torch.cat([s["value"] for s in samples])
-        out = {"label": torch.cat([s["label"] for s in samples])}
+
+        input = {"input_ids": torch.stack([s["input_ids"] for s in samples])}
+        input["token_type_ids"] = torch.stack([s["token_type_ids"] for s in samples])
+        input["attention_mask"] = torch.stack([s["attention_mask"] for s in samples])
+        input["seq_len"] = torch.stack([s["seq_len"] for s in samples])
+        input["value"] = torch.stack([s["value"] for s in samples])
+        out = {"label": torch.stack([s["label"] for s in samples])}
 
         out["net_input"] = input
         return out
 
-class MLMTokenizedDataset(TokenizedDataset):
+class MLMTokenizedDataset(BaseDataset):
     def __init__(
         self,
         input_path,
@@ -312,6 +314,7 @@ class MLMTokenizedDataset(TokenizedDataset):
         task,
         seed,
         ratio,
+        mlm_prob
     ):
         super().__init__(
             input_path=input_path,
@@ -324,8 +327,8 @@ class MLMTokenizedDataset(TokenizedDataset):
             seed=seed,
             ratio=ratio,
         )
+        self.mlm_prob = mlm_prob
 
-        hit_idcs = self.get_fold_indices()
         col_names = ['input_ids', 'token_type_ids', 'attention_mask']
 
         self.input_ids, self.token_type_ids, self.attention_mask = (
@@ -333,7 +336,7 @@ class MLMTokenizedDataset(TokenizedDataset):
                 file=os.path.join(self.data_path, f"{col}_unique_code.npy")
             ) for col in col_names
         )
-        logger.info(f"loaded {len(self.input_idcs)} {self.split} samples")
+        logger.info(f"loaded {len(self.input_ids)} {self.split} samples")
 
     def __len__(self):
         return len(self.input_ids)
@@ -356,31 +359,51 @@ class MLMTokenizedDataset(TokenizedDataset):
         if len(samples) == 0:
             return {}
         
-        input = {"input_ids": torch.cat([s["input_ids"] for s in samples])}
-        input["token_type_ids"] = torch.cat([s["token_type_ids"] for s in samples])
-        input["atttention_mask"] = torch.cat([s["attention_mask"] for s in samples])
-        out = {"label": torch.cat([s["mlm_labels"] for s in samples])}
+        input = {"input_ids": torch.stack([s["input_ids"] for s in samples])}
+        input["token_type_ids"] = torch.stack([s["token_type_ids"] for s in samples])
+        input["attention_mask"] = torch.stack([s["attention_mask"] for s in samples])
+        out = {"label": torch.stack([s["mlm_labels"] for s in samples])}
 
         out["net_input"] = input
         return out
 
-class Word2VecDataset(Dataset):
-    def __init__(self, args):
-        super().__init__()
-        data = args.dataset
-        self.task = args.task
-        # TODO 변경하기
-        self.path = args.input_path
-        if data == 'mimic':
-            file_path = os.path.join(self.path, 'mimic_input_input_index')
-            file_path = file_path + f'_{args.value_embed_type}.npy'
-        elif data == 'eicu':
-            file_path = os.path.join(self.path, f'eicu_input_input_index')
-            file_path = file_path + f'_{args.value_embed_type}.npy'
+class Word2VecDataset(BaseDataset):
+    def __init__(
+        self,
+        input_path,
+        data,
+        eval_data,
+        fold,
+        split,
+        value_embed_type,
+        task,
+        seed,
+        ratio,
+    ):
+        super().__init__(
+            self,
+            input_path,
+            data,
+            eval_data,
+            fold,
+            split,
+            value_embed_type,
+            task,
+            seed,
+            ratio,
+        )
+        # if data == 'mimic':
+        #     file_path = os.path.join(self.input_path, 'mimic_input_input_index')
+        #     file_path = file_path + f'_{args.value_embed_type}.npy'
+        # elif data == 'eicu':
+        #     file_path = os.path.join(self.path, f'eicu_input_input_index')
+        #     file_path = file_path + f'_{args.value_embed_type}.npy'
 
-        data = np.load(file_path)
-        data = self.indexing(data, args.dataset, args.seed)
-        self.pos_pair, self.neg_pair = self.preprocess(data)
+        input_idcs = np.load(
+            file=os.path.join(self.data_path, "{}_input_index{}".format(self.prefix, self.ext))
+        )
+        input_idcs = self.indexing(input_idcs, self.data, self.seed)
+        self.pos_pair, self.neg_pair = self.preprocess(input_idcs)
         self.pos_pair.pop(0)
         self.index_dict = {i: k for i, k in enumerate(self.pos_pair.keys())}
 
@@ -393,10 +416,12 @@ class Word2VecDataset(Dataset):
             pos = random.sample(self.pos_pair[item], 5)
         except ValueError:
             pos = random.choices(self.pos_pair[item], k=5)
+
         try:
             neg = random.sample(self.neg_pair[item], 30)
         except ValueError:
             neg = random.choices(self.neg_pair[item], k=30)
+
         return torch.LongTensor([item]), torch.LongTensor(pos), torch.LongTensor(neg)
 
     def indexing(self, data, dataname, seed):

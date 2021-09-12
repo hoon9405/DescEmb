@@ -1,4 +1,4 @@
-from dataset import (
+from .dataset import (
     Dataset,
     TokenizedDataset,
     MLMTokenizedDataset,
