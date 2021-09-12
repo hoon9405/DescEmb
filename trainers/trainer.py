@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 
 class Trainer(object):
     def __init__(self, args):
-        # self.args = args
-        self.device = args.device
         self.input_path = args.input_path
         self.save_dir = args.save_dir
         self.save_prefix = args.save_prefix
-        
+
+        self.disable_validation = args.disable_validation
+        self.patience = args.patience
+
         self.data = args.data
         self.eval_data = args.eval_data
         self.value_embed_type = args.value_embed_type
@@ -40,6 +41,7 @@ class Trainer(object):
         self.task = args.task
 
         self.model_type = args.model
+        self.embed_model_type = args.embed_model
 
         # self.debug = args.debug
         self.seed = args.seed
@@ -63,10 +65,6 @@ class Trainer(object):
         # if not self.debug:
         #     wandb.init(project=args.wandb_project_name, entity="pretrained_ehr", config=args, reinit=True)
 
-        self.best_eval_path = args.save_path + '_best_auprc.pt'
-        self.best_mimic_eval_path = args.save_path + '_mimic_best_auprc.pt'
-        self.best_eicu_eval_path = args.save_path + '_eicu_best_auprc.pt'
-
         model = models.build_model(args)
 
         logger.info(model)
@@ -79,27 +77,8 @@ class Trainer(object):
             )
         )
 
-        #Model define
-        #XXX
-        if args.transfer:
-            if os.path.exists(args.model_path):
-                logger.info(
-                    f"transferring pretrained model from {args.model_path}"
-                )
-                state_dict = torch.load(args.model_path)['model_state_dict']
-                #XXX breakpoint()
-                if args.embed_model_mode in ['CodeEmb', 'Bert-FT']:
-                    state_dict = {k.replace('module.',''): state_dict[k] for k in state_dict if (not 'embedding' in k and not 'bert_embed' in k)}
-                else:
-                    state_dict = {k.replace('module.',''): state_dict[k] for k in state_dict }
+        self.model = nn.DataParallel(model, device_ids=args.device_ids).to('cuda')
 
-                model.load_state_dict(state_dict, strict = False)
-            else:
-                raise FileNotFoundError(
-                    f"--model_path {args.model_path} does not exist"
-                )
-        self.model = nn.DataParallel(model).to(self.device)
-       
         for subset in ['train'] + self.valid_subsets:
             self.load_dataset(subset)
 
@@ -121,13 +100,14 @@ class Trainer(object):
                 value_embed_type=self.value_embed_type,
                 task=self.task,
                 seed=self.seed,
-                ratio=self.ratio
+                ratio=self.ratio,
+                mlm_prob=self.mlm_prob
             )
         #XXX word2vec dataset
         # elif self.task == 'w2v':
         #     dataset = Word2VecDataset()
         #     ...
-        elif self.model_type.startswith('codeemb'):
+        elif self.embed_model_type.startswith('codeemb'):
             dataset = Dataset(
                 input_path=self.input_path,
                 data=self.data,
@@ -139,7 +119,7 @@ class Trainer(object):
                 seed=self.seed,
                 ratio=self.ratio
             )
-        elif self.model_type.startswith('descemb'):
+        elif self.embed_model_type.startswith('descemb'):
             dataset = TokenizedDataset(
                 input_path=self.input_path,
                 data=self.data,
@@ -152,10 +132,10 @@ class Trainer(object):
                 ratio=self.ratio
             )
         else:
-            raise NotImplementedError(), self.model_type
+            raise NotImplementedError(self.model_type)
 
         self.data_loaders[split] = DataLoader(
-            dataset, batch_size=self.batch_size, num_workers=8, shuffle=True
+            dataset, collate_fn=dataset.collator, batch_size=self.batch_size, num_workers=8, shuffle=True
         )
 
     def train(self):
@@ -164,50 +144,39 @@ class Trainer(object):
             preds_train = []
             truths_train = []
             total_train_loss = 0
+            auroc_train = 0
+            auprc_train = 0
 
             self.model.train()
 
-            for sample in tqdm.tqdm(self.train_dataloader):
+            for sample in tqdm.tqdm(self.data_loaders['train']):
                 self.optimizer.zero_grad(set_to_none=True)
 
                 net_output = self.model(**sample["net_input"])
-                logits = self.model.get_logits(net_output)
-                target = self.get_targets(sample)
+                #NOTE we assume self.model is wrapped by torch.nn.parallel.data_parallel.DataParallel
+                logits = self.model.module.get_logits(net_output)
+                target = self.model.module.get_targets(sample).to(logits.device)
 
-                #XXX breakpoint() -> label.shape
-                #XXX check when mlm
-                if self.target == 'diagnosis':
+                if self.task == 'diagnosis':
                     loss = self.criterion(logits, target.squeeze(2))
                 else:
                     loss = self.criterion(logits, target)
-
-                #XXX mlm -> task
-                #XXX mlm + prediction task simultaneously? -> x
-                # if self.mlm_prob > 0:
-                #     mlm_labels = sample['mlm_labels'].to(self.device)
-                #     mlm_labels = mlm_labels.view(-1)
-                #     mlm_output = mlm_output.view(-1, 28996)
-
-                #     survivor = torch.where(mlm_labels != -100)[0]
-
-                #     mlm_labels = mlm_labels[survivor]
-                #     mlm_output = mlm_output[survivor]
-
-                #     extra_loss = F.cross_entropy(mlm_output, mlm_labels)
-                #     loss += extra_loss
 
                 loss.backward()
                 self.optimizer.step()
 
                 total_train_loss += loss.item()
 
-                probs_train = torch.sigmoid(logits).detach().cpu().numpy()
-                preds_train += list(probs_train.flatten())
-                truths_train += list(target.detach().cpu().numpy().flatten())         
+                with torch.no_grad():
+                    if self.task not in ['mlm', 'w2v']:
+                        truths_train += list(target.cpu().numpy().flatten())
+                        probs_train = torch.sigmoid(logits).cpu().numpy()
+                        preds_train += list(probs_train.flatten())
 
-            avg_train_loss = total_train_loss / len(self.train_dataloader)
-            auroc_train = roc_auc_score(truths_train, preds_train)
-            auprc_train = average_precision_score(truths_train, preds_train, average='micro')
+            avg_train_loss = total_train_loss / len(self.data_loaders['train'])
+            if self.task not in ['mlm', 'w2v']:
+                auroc_train = roc_auc_score(truths_train, preds_train)
+                auprc_train = average_precision_score(truths_train, preds_train, average='micro')
 
             # if not self.debug:
             #     wandb.log(
@@ -218,7 +187,6 @@ class Trainer(object):
             #         }
             #     )
 
-            #XXX
             with rename_logger(logger, "train"):
                 logger.info(
                     "epoch: {}, loss: {:.3f}, auroc: {:.3f}, auprc: {:.3f}".format(
@@ -240,6 +208,8 @@ class Trainer(object):
         preds_valid = []
         truths_valid = []
         total_valid_loss = 0
+        auroc_valid = 0
+        auprc_valid = 0
 
         valid_auprcs = []
         for subset in valid_subsets:
@@ -248,25 +218,27 @@ class Trainer(object):
             for sample in self.data_loaders[subset]:
                 with torch.no_grad():
                     net_output = self.model(**sample["net_input"])
-                    logits = self.model.get_logits(net_output)
-                    target = self.get_targets(sample)
+                    #NOTE we assume self.model is wrapped by torch.nn.parallel.data_parallel.DataParallel
+                    logits = self.model.module.get_logits(net_output)
+                    target = self.model.module.get_targets(sample).to(logits.device)
 
-                    #XXX breakpoint() -> label.shape
-                    #XXX check when mlm
-                    if self.target == 'diagnosis':
+                    if self.task == 'diagnosis':
                         loss = self.criterion(logits, target.squeeze(2))
                     else:
                         loss = self.criterion(logits, target)
 
                 total_valid_loss += loss.item()
 
-                probs_valid = torch.sigmoid(logits).detach().cpu().numpy()
-                preds_valid += list(probs_valid.flatten())
-                truths_valid += list(target.detach().cpu().numpy().flatten())
+                with torch.no_grad():
+                    if self.task not in ['mlm', 'w2v']:
+                        truths_valid += list(target.cpu().numpy().flatten())
+                        probs_valid = torch.sigmoid(logits).cpu().numpy()
+                        preds_valid += list(probs_valid.flatten())
 
             avg_valid_loss = total_valid_loss / len(self.data_loaders[subset])
-            auroc_valid = roc_auc_score(truths_valid, preds_valid)
-            auprc_valid = average_precision_score(truths_valid, preds_valid, average='micro')
+            if self.task not in ['mlm', 'w2v']:
+                auroc_valid = roc_auc_score(truths_valid, preds_valid)
+                auprc_valid = average_precision_score(truths_valid, preds_valid, average='micro')
 
             with rename_logger(logger, subset):
                 logger.info(
@@ -288,17 +260,48 @@ class Trainer(object):
         epoch,
         valid_subsets
     ):
+        if (
+            self.disable_validation
+            or valid_subsets is None
+            or self.task in ['mlm', 'w2v']
+        ):
+            logger.info(
+                "Saving checkpoint to {}".format(
+                    os.path.join(self.save_dir, self.save_prefix + "_last.pt")
+                )
+            )
+            torch.save(
+                {
+                    'model_state_dict': self.model.module.state_dict() if (
+                        isinstance(self.model, DataParallel)
+                    ) else self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'epochs': epoch,
+                },
+                os.path.join(self.save_dir, self.save_prefix + "_last.pt")
+            )
+            logger.info(
+                "Finished saving checkpoint to {}".format(
+                    os.path.join(self.save_dir, self.save_prefix + "_last.pt")
+                )
+            )
+            return False
+
         should_stop = False
 
         #TODO add more options for validation (e.g. validate_metric, validate_interval, ...)
         valid_auprcs = self.validate(epoch, valid_subsets)
-        should_stop |= should_stop_early(self.args.patience, valid_auprcs[0])
+        should_stop |= should_stop_early(self.patience, valid_auprcs[0])
 
         prev_best = getattr(should_stop_early, "best", None)
-        if prev_best and prev_best == valid_auprcs[0]:
+        if (
+            self.patience <= 0
+            or prev_best is None
+            or (prev_best and prev_best == valid_auprcs[0])
+        ):
             logger.info(
                 "Saving checkpoint to {}".format(
-                    os.path.join(self.args.save_dir, self.args.save_prefix + "_best.pt")
+                    os.path.join(self.save_dir, self.save_prefix + "_best.pt")
                 )
             )
             torch.save(
@@ -312,11 +315,11 @@ class Trainer(object):
                     # 'auroc': best_auroc,
                     # 'auprc': best_auprc,
                 },
-                os.path.join(self.args.save_dir, self.args.save_prefix + "_best.pt")
+                os.path.join(self.save_dir, self.save_prefix + "_best.pt")
             )
             logger.info(
                 "Finished saving checkpoint to {}".format(
-                    os.path.join(self.args.save_dir, self.args.save_prefix + "_best.pt")
+                    os.path.join(self.save_dir, self.save_prefix + "_best.pt")
                 )
             )
 
