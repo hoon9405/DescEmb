@@ -6,9 +6,8 @@ from torch.utils.data import DataLoader
 import wandb
 
 from datasets.dataset import Word2VecDataset
-from models.Word2Vec import Word2Vec
+from models.word2vec import Word2VecModel
 from utils.trainer_utils import EarlyStopping
-
 
 class Word2VecTrainer():
     def __init__(self, args):
@@ -42,12 +41,12 @@ class Word2VecTrainer():
 
         self.dataloader = DataLoader(dataset=Word2VecDataset(args), batch_size=args.batch_size, shuffle=True)
 
-        self.model = Word2Vec(index_size_dict[args.concat_type][args.dataset], emb_dim=128).cuda()
+        self.model = Word2VecModel(index_size_dict[args.value_embed_type][args.data], emb_dim=128).cuda()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
 
         wandb.init(project='Word2Vec', entity="pretrained_ehr", config=args, reinit=True)
 
-        self.path = args.pretrain_path
+        self.path = args.model_path
         print(f'model is saved {self.path}')
         self.n_epochs = args.n_epochs
 
