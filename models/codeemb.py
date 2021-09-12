@@ -2,6 +2,7 @@ import torch.nn as nn
 
 from models import register_model
 
+#XXX 2. w2v load
 @register_model("codeemb")
 class CodeEmb(nn.Module):
     def __init__(self, args):
@@ -10,31 +11,31 @@ class CodeEmb(nn.Module):
             'nonconcat' : {
                 'mimic' : 1889, 
                 'eicu' : 1534, 
-                'both' : 3223
+                'pooled' : 3223
             },
-            'concat_a' : {
+            'VA' : {
                 'mimic' : 70873, 
                 'eicu' : 34424, 
-                'both' : 104353
+                'pooled' : 104353
             },
-            'concat_b' : {
+            'DSVA' : {
                 'mimic' : 70873, 
                 'eicu' : 34424,
-                'both' : 104353
+                'pooled' : 104353
             },
-            'concat_c' : {
+            'DSVA_DPE' : {
                 'mimic' : 70873, 
                 'eicu' : 34424, 
-                'both' : 104353
+                'pooled' : 104353
             },
-            'concat_d' : {
+            'VC' : {
                 'mimic' : 3850,
                 'eicu' : 4354,
-                'both' : 8095
+                'pooled' : 8095
             }
         } 
 
-        index_size = index_size_dict[args.concat_type][args.source_file]
+        index_size = index_size_dict[args.value_embed_type][args.data]
 
         self.embedding =nn.Embedding(index_size, args.pred_embed_dim, padding_idx=0)
 

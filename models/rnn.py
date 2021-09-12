@@ -7,20 +7,14 @@ from models import register_model
 class RNNModel(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.visualize = args.visualize
-        self.rnn_type = args.rnn_type
+        self.pred_embed_dim = args.pred_embed_dim
         self.pred_hidden_dim = args.pred_hidden_dim
-        self.RNN_SESTS = args.RNN_SESTS
-        self.rnn_att = args.rnn_att
         self.n_layers = args.rnn_layer
 
-        pred_embed_dim = args.pred_embed_dim
-        dropout = args.dropout
-
         self.model = nn.GRU(
-            pred_embed_dim,
+            self.pred_embed_dim,
             self.pred_hidden_dim,
-            dropout=dropout,
+            dropout=args.dropout,
             batch_first=True,
             bidirectional=False,
             num_layers=self.n_layers
@@ -28,7 +22,7 @@ class RNNModel(nn.Module):
 
         self.final_proj = nn.Linear(
             self.pred_hidden_dim,
-            18 if args.target == 'diagnosis' else 1
+            18 if args.task == 'diagnosis' else 1
         )
 
     @classmethod
@@ -36,14 +30,13 @@ class RNNModel(nn.Module):
         """Build a new model instance."""
         return cls(args)
 
-    def forward(self, x, lengths):
+    def forward(self, x, seq_len, **kwargs):
         self.model.flatten_parameters()
 
-        output_seq, output_len=self.pack_pad_seq(x, lengths)
+        output_seq, _ = self.pack_pad_seq(x, seq_len)
 
-        i = range(x.size(0)) 
-        x = output_seq[i, lengths - 1, :]
-        x = self.rnn_hidden_output(output_seq, i, output_len)
+        i = range(x.size(0))
+        x = output_seq[i, -1, :]
 
         output = self.final_proj(x)
 
