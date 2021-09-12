@@ -151,7 +151,10 @@ def main():
     torch.cuda.manual_seed_all(args.seed)  # if use multi-GPU
     torch.backends.cudnn.deterministic = True
 
-    trainer = Trainer(args)
+    if args.task != 'w2v':
+        trainer = Trainer(args)
+    else:
+        trainer = Word2VecTrainer(args)
     trainer.train()
     logger.info("done training")
 

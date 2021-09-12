@@ -1,8 +1,13 @@
+import logging
+
+import torch
 import torch.nn as nn
 
 from models import register_model
 
-#XXX 2. w2v load
+logger = logging.getLogger(__name__)
+
+#TODO test loading pretrained w2v weights
 @register_model("codeemb")
 class CodeEmb(nn.Module):
     def __init__(self, args):
@@ -38,6 +43,25 @@ class CodeEmb(nn.Module):
         index_size = index_size_dict[args.value_embed_type][args.data]
 
         self.embedding =nn.Embedding(index_size, args.pred_embed_dim, padding_idx=0)
+
+        if not args.transfer and args.load_pretrained_weights:
+            assert args.model_path, args.model_path
+            logger.info(
+                "Preparing to load pre-trained checkpoint {}".format(args.model_path)
+            )
+            state_dict = torch.load(args.model_path)['model_state_dict']
+
+            state_dict = {
+                'embedding.weight': v for k, v in state_dict.items()
+                if k == 'input_emb.weight'
+            }
+            self.load_state_dict(state_dict, strict=True)
+
+            logger.info(
+                "Loaded checkpoint {}".format(
+                    args.model_path
+                )
+            )
 
     @classmethod
     def build_model(cls, args):
