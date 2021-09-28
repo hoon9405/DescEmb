@@ -21,6 +21,7 @@ And make same csv file directory and pre-processed output directory settings as 
 
 
 ### directory settings for pre-processing
+```
 data_input_path
 ├─ mimic
 │  ├─ ADMISSIONS.csv
@@ -41,14 +42,15 @@ data_input_path
    ├─ lab.csv
    ├─ medication.csv
    └─ patient.csv
-
+```
+```
 data_output_path
 ├─mimic
 ├─eicu
 ├─pooled
 ├─label
 └─fold
-
+```
 ```shell script
 $ python preprocess_main.py 
     --data_input_path $csv_directory
