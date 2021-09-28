@@ -1,8 +1,10 @@
 # Unifying Heterogeneous Electronic Health Record Systems via Clinical Text-Based Code Embedding
 Kyunghoon Hur, Jiyoung Lee, Jungwoo Oh, Wesley Price, Young-Hak Kim, Edward Choi
 
+This repository provides official Pytorch code to implement DescEmb, a code-agnostic EHR predictive model.
 
-This repository provides official Pytorch code to implement DescEmb, a code-agnostic EHR predictive model. [[ArXiv](https://arxiv.org/abs/2108.03625)]
+The paper can be found in this link:
+[Unifying Heterogeneous Electronic Health Record Systems via Clinical Text-Based Code Embedding](https://arxiv.org/abs/2108.03625)
 
 # Requirements
 
