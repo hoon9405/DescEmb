@@ -13,14 +13,9 @@ The paper can be found in this link:
 
 # Getting started
 ## Prepare training data
-Given a directory that contains EHR database to be used (we support MIMIC-III and eICU database)  
-First, get csv file from websites.
-MIMIC-III : https://physionet.org/content/mimiciii/1.4/
-eICU : https://physionet.org/content/eicu-crd/2.0/
-And make same csv file directory and pre-processed output directory settings as below.
+First, download the database in this links: [MIMIC-III](https://physionet.org/content/mimiciii/1.4/), [eICU](https://physionet.org/content/eicu-crd/2.0/)
 
-
-### directory settings for pre-processing
+Second, make directory sturcture like this:
 ```
 data_input_path
 ├─ mimic
@@ -51,14 +46,13 @@ data_output_path
 ├─label
 └─fold
 ```
+Then run:
 ```shell script
 $ python preprocess_main.py 
     --data_input_path $csv_directory
     --data_output_path $run_ready_directory 
 ```
-pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor.
-
-Minimum required RAM storage space : 60GB
+Note that pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor, and requires 60GB of RAM.
 
 # Examples
 ## Pre-training a model
