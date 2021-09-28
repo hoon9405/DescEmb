@@ -28,8 +28,8 @@ def get_parser():
     )
 
     # checkpoint configs
-    parser.add_argument('--input_path', type=str, default='/home/ghhur/data/input/')
-    parser.add_argument('--model_path', type=str, default='/home/ghhur/data/output/NIPS_output/pretrain/pretrain.pt')
+    parser.add_argument('--input_path', type=str, required=True)
+    parser.add_argument('--model_path', type=str)
     parser.add_argument('--save_dir', type=str, default='checkpoints')
     parser.add_argument('--save_prefix', type=str, default='checkpoint')
 
@@ -77,20 +77,13 @@ def get_parser():
     parser.add_argument('--pred_embed_dim', type=int, default=128)
     parser.add_argument('--pred_hidden_dim', type=int, default=256)
 
-    # wandb setting
-    # parser.add_argument('--wandb_project_name', type=str)
-    # parser.add_argument('--wandb_run_name', type=str)
-
     # mlm pretrain & finetune
     parser.add_argument('--mlm_prob', type=float, default=0.3)
     parser.add_argument('--load_pretrained_weights', action='store_true')
 
-    # parser.add_argument('--transfer', type=str, 
-    #             help = "example = {'lr':1e-4, 'epoch':400, 'src':'mimic', 'model':'bert_tiny'}") # should be finxed 
     
     # for transfer
     parser.add_argument("--transfer", action="store_true")
-    # parser.add_argument('--dest_file', choices = ['mimic', 'eicu'], default = 'eicu') 
 
     # model
     parser.add_argument(
@@ -112,9 +105,6 @@ def get_parser():
     parser.add_argument('--init_bert_params', action='store_true')
     parser.add_argument('--init_bert_params_with_freeze', action='store_true')
 
-    # parser.add_argument('--embed_model_mode', choices=['CodeEmb-RD', 'CodeEmb-W2V' 'BERT-CLS-FT', 'BERT-FT', 
-    #         'BERT-Scr', 'BERT-FT+MLM', 'RNN-Scr', 'RNN-Scr+MLM', 'W2V-pretrain', 'MLM-pretrain-BERT', 'MLM-pretrain-RNN'], default='CodeEmb-RD')
-
     return parser
 
 def main():
@@ -130,18 +120,6 @@ def main():
     )
     args.device_ids = list(range(args.distributed_world_size))
     set_struct(vars(args))
-
-    # print(f"Training Mode : {args.embed_model_mode}" )
-    # if args.embed_model_mode == 'W2V-pretrain':
-    #     from trainers.Word2Vec_trainer import Trainer
-    #     SEED = [2020]
-
-    # elif args.embed_model_mode in ['MLM-pretrain-BERT', 'MLM-pretrain-RNN']:
-    #     from trainers.textencoder_bert_MLM_trainer import Trainer
-    #     SEED = [2020]
-    # else:
-    #     from trainers.base_trainer import Trainer
-
 
     mp.set_sharing_strategy('file_system')
     random.seed(args.seed)

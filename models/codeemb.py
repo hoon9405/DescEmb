@@ -7,7 +7,6 @@ from models import register_model
 
 logger = logging.getLogger(__name__)
 
-#TODO test loading pretrained w2v weights
 @register_model("codeemb")
 class CodeEmb(nn.Module):
     def __init__(self, args):

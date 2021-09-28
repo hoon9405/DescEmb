@@ -2,6 +2,7 @@ import os
 import logging
 
 import torch
+from torch._C import Value
 import torch.nn as nn
 
 from models import register_model, MODEL_REGISTRY
@@ -35,9 +36,24 @@ class EHRModel(nn.Module):
             logger.info(
                 f"Preparing to transfer pre-trained model {args.model_path}"
             )
-            state_dict = torch.load(args.model_path)['model_state_dict']
+            loaded_checkpoint = torch.load(args.model_path)
+            loaded_state_dict = loaded_checkpoint['model_state_dict']
+            loaded_args = loaded_checkpoint['args']
+
+            assert (
+                loaded_args.embed_model == self.args.embed_model
+                and loaded_args.pred_model == self.args.pred_model
+            ), (
+                'found mismatch with transferred model. please check if '
+                'are trying to transfer model that has a different architecture.\n'
+                f'transferred embed_model: {loaded_args.embed_model}\n'
+                f'self.embed_model: {self.args.embed_model}\n'
+                f'transferred pred_model: {loaded_args.pred_model}\n'
+                f'self.pred_model: {self.args.pred_model}'
+            )
+
             state_dict = {
-                k: v for k,v in state_dict.items() if (
+                k: v for k,v in loaded_state_dict.items() if (
                     args.embed_model.startswith('codeemb')
                     and 'embedding' not in k
                 )
@@ -45,7 +61,7 @@ class EHRModel(nn.Module):
             missing, unexpected = self.load_state_dict(state_dict, strict=False)
             if unexpected or len(missing) > 1:
                 logger.warn(
-                    'transferred model has missing or unexpected keys.'
+                    'transferred model has unexpected or missing keys.'
                 )
     @property
     def _embed_model(self):

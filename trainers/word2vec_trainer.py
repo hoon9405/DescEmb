@@ -1,13 +1,15 @@
+import os
+import logging
+
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import wandb
-
 from datasets.dataset import Word2VecDataset
 from models.word2vec import Word2VecModel
-from utils.trainer_utils import EarlyStopping
+from utils.trainer_utils import rename_logger, EarlyStopping
+
+logger = logging.getLogger(__name__)
 
 class Word2VecTrainer():
     def __init__(self, args):
@@ -44,10 +46,9 @@ class Word2VecTrainer():
         self.model = Word2VecModel(index_size_dict[args.value_embed_type][args.data], emb_dim=128).cuda()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
 
-        wandb.init(project='Word2Vec', entity="pretrained_ehr", config=args, reinit=True)
+        self.save_dir = args.save_dir
+        self.save_prefix = args.save_prefix
 
-        self.path = args.model_path
-        print(f'model is saved {self.path}')
         self.n_epochs = args.n_epochs
 
         self.early_stopping = EarlyStopping(patience=20, verbose=True)
@@ -55,10 +56,13 @@ class Word2VecTrainer():
     def train(self):
         best_loss = float('inf')
         for epoch in range(self.n_epochs):
-            avg_loss = 0.
+            avg_loss = 0
             for iter, sample in enumerate(self.dataloader):
                 batch_input, batch_labels, batch_neg = sample
-                batch_input = batch_input.cuda(); batch_labels = batch_labels.cuda(); batch_neg = batch_neg.cuda()
+                batch_input = batch_input.cuda()
+                batch_labels = batch_labels.cuda()
+                batch_neg = batch_neg.cuda()
+                
                 loss = self.model(batch_input, batch_labels, batch_neg)
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -66,14 +70,33 @@ class Word2VecTrainer():
 
                 avg_loss += loss.item()
 
-                wandb.log({'train_loss': loss})
+            avg_loss /= len(self.dataloader)
 
-            print(f'[Loss] {avg_loss}')
+            logger.info(
+                "epoch: {}, loss: {:.3f}".format(
+                    epoch, avg_loss
+                )
+            )
+
             self.early_stopping(-avg_loss)
             if best_loss > avg_loss:
                 best_loss = avg_loss
-                torch.save({'model_state_dict': self.model.state_dict()}, self.path)
-                print(f'Model saved at {epoch}')
+                logger.info(
+                    "Saving checkpoint to {}".format(
+                        os.path.join(self.save_dir, self.save_prefix + "_best.pt")
+                    )
+                )
+                torch.save(
+                    {
+                        'model_state_dict': self.model.state_dict()
+                    },
+                    os.path.join(self.save_dir, self.save_prefix + "_best.pt")
+                )
+                logger.info(
+                    "Finished saving checkpoint to {}".format(
+                        os.path.join(self.save_dir, self.save_prefix + "_best.pt")
+                    )
+                )
 
             if self.early_stopping.early_stop is True:
                 break

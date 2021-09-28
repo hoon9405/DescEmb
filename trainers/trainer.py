@@ -1,7 +1,6 @@
 import os
 import logging
 import pprint
-import wandb
 import tqdm
 
 import torch
@@ -26,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 class Trainer(object):
     def __init__(self, args):
+        self.args = args
+
         self.input_path = args.input_path
         self.save_dir = args.save_dir
         self.save_prefix = args.save_prefix
@@ -43,7 +44,6 @@ class Trainer(object):
         self.model_type = args.model
         self.embed_model_type = args.embed_model
 
-        # self.debug = args.debug
         self.seed = args.seed
         self.ratio = args.ratio
         self.lr = args.lr
@@ -61,9 +61,6 @@ class Trainer(object):
 
         # print args
         logger.info(pprint.pformat(vars(args)))
-
-        # if not self.debug:
-        #     wandb.init(project=args.wandb_project_name, entity="pretrained_ehr", config=args, reinit=True)
 
         model = models.build_model(args)
 
@@ -103,10 +100,6 @@ class Trainer(object):
                 ratio=self.ratio,
                 mlm_prob=self.mlm_prob
             )
-        #XXX word2vec dataset
-        # elif self.task == 'w2v':
-        #     dataset = Word2VecDataset()
-        #     ...
         elif self.embed_model_type.startswith('codeemb'):
             dataset = Dataset(
                 input_path=self.input_path,
@@ -178,15 +171,6 @@ class Trainer(object):
                 auroc_train = roc_auc_score(truths_train, preds_train)
                 auprc_train = average_precision_score(truths_train, preds_train, average='micro')
 
-            # if not self.debug:
-            #     wandb.log(
-            #         {
-            #             'train_loss': avg_train_loss,
-            #             'train_auroc': auroc_train,
-            #             'train_auprc': auprc_train
-            #         }
-            #     )
-
             with rename_logger(logger, "train"):
                 logger.info(
                     "epoch: {}, loss: {:.3f}, auroc: {:.3f}, auprc: {:.3f}".format(
@@ -246,10 +230,6 @@ class Trainer(object):
                         epoch, avg_valid_loss, auroc_valid, auprc_valid
                     )
                 )
-            # if not self.debug:
-            #     wandb.log({'eval_loss': avg_valid_loss,
-            #                 'eval_auroc': auroc_valid,
-            #                 'eval_auprc': auprc_valid})
 
             valid_auprcs.append(auprc_valid)
 
@@ -277,6 +257,7 @@ class Trainer(object):
                     ) else self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'epochs': epoch,
+                    'args': self.args
                 },
                 os.path.join(self.save_dir, self.save_prefix + "_last.pt")
             )
@@ -311,9 +292,7 @@ class Trainer(object):
                     ) else self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'epochs': epoch,
-                    # 'loss': best_loss,
-                    # 'auroc': best_auroc,
-                    # 'auprc': best_auprc,
+                    'args': self.args,
                 },
                 os.path.join(self.save_dir, self.save_prefix + "_best.pt")
             )

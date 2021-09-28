@@ -392,12 +392,6 @@ class Word2VecDataset(BaseDataset):
             seed,
             ratio,
         )
-        # if data == 'mimic':
-        #     file_path = os.path.join(self.input_path, 'mimic_input_input_index')
-        #     file_path = file_path + f'_{args.value_embed_type}.npy'
-        # elif data == 'eicu':
-        #     file_path = os.path.join(self.path, f'eicu_input_input_index')
-        #     file_path = file_path + f'_{args.value_embed_type}.npy'
 
         input_idcs = np.load(
             file=os.path.join(self.data_path, "{}_input_index{}".format(self.prefix, self.ext))
