@@ -14,10 +14,48 @@ The paper can be found in this link:
 # Getting started
 ## Prepare training data
 Given a directory that contains EHR database to be used (we support MIMIC-III and eICU database)  
-First, ...
+First, get csv file from websites.
+MIMIC-III : https://physionet.org/content/mimiciii/1.4/
+eICU : https://physionet.org/content/eicu-crd/2.0/
+And make same csv file directory and pre-processed output directory settings as below.
+
+
+### directory settings for pre-processing
+data_input_path
+├─ mimic
+│  ├─ ADMISSIONS.csv
+│  ├─ PATIENTS.csv
+│  ├─ ICUSYAYS.csv
+│  ├─ LABEVENTES.csv
+│  ├─ PRESCRIPTIONS.csv
+│  ├─ PROCEDURES.csv
+│  ├─ INPUTEVENTS_CV.csv
+│  ├─ INPUTEVENTS_MV.csv
+│  ├─ D_ITEMDS.csv
+│  ├─ D_ICD_PROCEDURES.csv
+│  └─ D_LABITEMBS.csv
+│
+└─ eicu
+   ├─ diagnosis.csv
+   ├─ infusionDrug.csv
+   ├─ lab.csv
+   ├─ medication.csv
+   └─ patient.csv
+
+data_output_path
+├─mimic
+├─eicu
+├─pooled
+├─label
+└─fold
+
 ```shell script
-$ ...
+$ python preprocess_main.py 
+    --data_input_path $csv_directory
+    --data_output_path $run_ready_directory 
 ```
+pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor.
+Minimum required RAM storage space : 60GB
 
 # Examples
 ## Pre-training a model
