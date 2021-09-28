@@ -56,8 +56,9 @@ $ python preprocess_main.py
     --data_input_path $csv_directory
     --data_output_path $run_ready_directory 
 ```
-$ pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor.
-$ Minimum required RAM storage space : 60GB
+pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor.
+
+Minimum required RAM storage space : 60GB
 
 # Examples
 ## Pre-training a model
