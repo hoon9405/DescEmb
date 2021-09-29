@@ -13,9 +13,13 @@ The paper can be found in this link:
 
 # Getting started
 ## Prepare training data
-First, download the database in this links: [MIMIC-III](https://physionet.org/content/mimiciii/1.4/), [eICU](https://physionet.org/content/eicu-crd/2.0/)
+First, download the dataset from these links: 
+[MIMIC-III](https://physionet.org/content/mimiciii/1.4/)
+[eICU](https://physionet.org/content/eicu-crd/2.0/)
+[ccs_multi_dx_tool_2015](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
+[icd10cmtoicd9gem](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
 
-Second, make directory sturcture like this:
+Second, make directory sturcture like below:
 ```
 data_input_path
 ├─ mimic
@@ -30,13 +34,15 @@ data_input_path
 │  ├─ D_ITEMDS.csv
 │  ├─ D_ICD_PROCEDURES.csv
 │  └─ D_LABITEMBS.csv
-│
-└─ eicu
-   ├─ diagnosis.csv
-   ├─ infusionDrug.csv
-   ├─ lab.csv
-   ├─ medication.csv
-   └─ patient.csv
+├─ eicu
+│  ├─ diagnosis.csv
+│  ├─ infusionDrug.csv
+│  ├─ lab.csv
+│  ├─ medication.csv
+│  └─ patient.csv
+├─ ccs_multi_dx_tool_2015.csv
+└─ icd10cmtoicd9gem.csv
+
 ```
 ```
 data_output_path
@@ -46,7 +52,7 @@ data_output_path
 ├─label
 └─fold
 ```
-Then run:
+Then run preprocessing code
 ```shell script
 $ python preprocess_main.py 
     --data_input_path $csv_directory
