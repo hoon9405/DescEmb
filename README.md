@@ -14,9 +14,12 @@ The paper can be found in this link:
 # Getting started
 ## Prepare training data
 First, download the dataset from these links: 
+
 [MIMIC-III](https://physionet.org/content/mimiciii/1.4/)
+
 [eICU](https://physionet.org/content/eicu-crd/2.0/)
 [ccs_multi_dx_tool_2015](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
+
 [icd10cmtoicd9gem](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
 
 Second, make directory sturcture like below:
