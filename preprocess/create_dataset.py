@@ -22,7 +22,8 @@ def create_MIMIC_dataset(input_path):
     print('length of DIAGNOSIS_ICD.csv  : ', len(icus))
 
     temp = icus[(icus['FIRST_CAREUNIT'] == icus['LAST_CAREUNIT'])]
-    temp = temp[temp.LAST_CAREUNIT == 'MICU']
+    #temp = temp[temp.LAST_CAREUNIT == 'MICU']     
+    #->For Total ICU
     
     temp = temp.drop(columns=['ROW_ID'])
     temp['INTIME'] = pd.to_datetime(temp['INTIME'], infer_datetime_format=True)
@@ -70,27 +71,27 @@ def create_MIMIC_dataset(input_path):
     cohort_mm = tempdf.reset_index(drop=True).copy()
     
     #diagnosis label
-    ccs_dx = pd.read_csv('/home/ghhur/DescEmb/preprocess/ccs_multi_dx_tool_2015.csv')
-    ccs_dx["'ICD-9-CM CODE'"] = ccs_dx["'ICD-9-CM CODE'"].str[1:].str[:-1].str.replace(" ", "")
-    ccs_dx["'CCS LVL 1'"] = ccs_dx["'CCS LVL 1'"].str[1:].str[:-1]
-    level1 = {}
-    for x, y in zip(ccs_dx["'ICD-9-CM CODE'"], ccs_dx["'CCS LVL 1'"]):
-        level1[x] = y
+    # ccs_dx = pd.read_csv('/home/ghhur/DescEmb/preprocess/ccs_multi_dx_tool_2015.csv')
+    # ccs_dx["'ICD-9-CM CODE'"] = ccs_dx["'ICD-9-CM CODE'"].str[1:].str[:-1].str.replace(" ", "")
+    # ccs_dx["'CCS LVL 1'"] = ccs_dx["'CCS LVL 1'"].str[1:].str[:-1]
+    # level1 = {}
+    # for x, y in zip(ccs_dx["'ICD-9-CM CODE'"], ccs_dx["'CCS LVL 1'"]):
+    #     level1[x] = y
     
-    dx1_list = []
-    for idx, dxx in enumerate(cohort_mm['ICD9_CODE']):
-        one_list = []
-        for dx in dxx:
-            dx1 = level1[dx]
-            one_list.append(dx1)
-        dx1_list.append(list(set(one_list)))
-    cohort_mm['diagnosis'] = pd.Series(dx1_list)
-    cohort_mm = cohort_mm[cohort_mm['diagnosis'] !=float].reset_index(drop=True)
-    dx1_length = [len(i) for i in dx1_list]
-    print("average length: ", np.array(dx1_length).mean())
-    print('dx freqeuncy', np.bincount(dx1_length))
-    print("max length: ", np.array(dx1_length).max())
-    print("min length: ", np.array(dx1_length).min())
+    # dx1_list = []
+    # for idx, dxx in enumerate(cohort_mm['ICD9_CODE']):
+    #     one_list = []
+    #     for dx in dxx:
+    #         dx1 = level1[dx]
+    #         one_list.append(dx1)
+    #     dx1_list.append(list(set(one_list)))
+    # cohort_mm['diagnosis'] = pd.Series(dx1_list)
+    # cohort_mm = cohort_mm[cohort_mm['diagnosis'] !=float].reset_index(drop=True)
+    # dx1_length = [len(i) for i in dx1_list]
+    # print("average length: ", np.array(dx1_length).mean())
+    # print('dx freqeuncy', np.bincount(dx1_length))
+    # print("max length: ", np.array(dx1_length).max())
+    # print("min length: ", np.array(dx1_length).min())
 
     #save as pickle
     pickle.dump(cohort_mm, open(os.path.join(input_path, 'mimic_cohort.pk'), 'wb'), -1)
@@ -105,7 +106,9 @@ def create_eICU_dataset(input_path):
 
     print('Unique patient unit stayid : ', len(set(patient_df.patientunitstayid)))
 
-    micu = patient_df[patient_df.unittype == 'MICU']
+    micu = patient_df
+    #micu = patient_df[patient_df.unittype == 'MICU']  
+    #-> For Total ICU
 
     null_index =micu[micu['age'].isnull()==True].index
     micu.loc[null_index, 'age'] = 1
@@ -136,8 +139,8 @@ def create_eICU_dataset(input_path):
 
     tempdf = cohort12h.join(diagnosis, on='patientunitstayid') 
     cohort_ei = tempdf.copy().reset_index(drop=True)
-    cohort_ei = eicu_diagnosis_label(cohort_ei)
-    cohort_ei = cohort_ei[cohort_ei['diagnosis'] !=float].reset_index(drop=True)
+    #cohort_ei = eicu_diagnosis_label(cohort_ei)
+    #cohort_ei = cohort_ei[cohort_ei['diagnosis'] !=float].reset_index(drop=True)
     cohort_ei = cohort_ei.reset_index(drop=True)
     pickle.dump(cohort_ei, open(os.path.join(input_path, 'eicu_cohort.pk'), 'wb'), -1)
 

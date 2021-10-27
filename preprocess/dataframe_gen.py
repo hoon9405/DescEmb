@@ -4,6 +4,7 @@ import os
 import datetime
 import re
 import random
+import tqdm
 
 def mimic_inf_merge(file, input_path, src):
     df_inf_mv_mm = pd.read_csv(os.path.join(input_path, src,'INPUTEVENTS_MV'+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01)
@@ -107,27 +108,33 @@ def ID_filter(df_icu, df):
     return df[df['ID'].isin(df_icu['ID'])]
 
 
-def time_filter(df_icu, df, source):
+def time_filter(df_icu, df, source, data_type):
     time_delta = datetime.timedelta(hours=12)
     if source =='mimic': 
         df = pd.merge(df, df_icu[['ID', 'INTIME', 'OUTTIME']], how='left', on='ID')
         df = df[df['code_time']!=' ']
         for col_name in ['code_time', 'INTIME', 'OUTTIME']:
             df[col_name] = pd.to_datetime(df[col_name])
-        df['INTIME+12hr'] = df['INTIME'] + time_delta
-        df = df[(df['code_time']> df['INTIME']) | (df['code_time'] < df['OUTTIME']) | (df['code_time'] < df['INTIME+12hr'])]
+        if data_type =='MICU':  
+            df['INTIME+12hr'] = df['INTIME'] + time_delta
+            df = df[(df['code_time']> df['INTIME']) | (df['code_time'] < df['OUTTIME']) | (df['code_time'] < df['INTIME+12hr'])]
+        elif data_type =='TotalICU':
+            df = df[(df['code_time']> df['INTIME']) | (df['code_time'] < df['OUTTIME'])]
+ 
         df['code_offset'] = df['code_time'] - df['INTIME']
         df['code_offset'] = df['code_offset'].apply(lambda x : x.seconds//60, 4)
-    elif source =='eicu':
-        df = df[(df['code_offset']> 0 ) | (df['code_offset'] < 12*60)]    
 
+    elif source =='eicu':
+        if data_type =='MICU':
+            df = df[(df['code_offset']> 0 ) | (df['code_offset'] < 12*60)]    
+        elif data_type =='TotalICU':
+            df = df[df['code_offset']> 0]   
     return df            
 
   
 def min_length(df, min_length):
     df = df[df['code_name'].map(type) ==list]
     df['code_length'] = df['code_name'].map(len)
-    print
     df = df[df['code_length']>=min_length]
     df = df.drop('code_length', axis=1)
 
@@ -204,10 +211,20 @@ def pad(sequence, max_length):
     else:
         pad_length = max_length-len(sequence)
         zeros = list(np.zeros(pad_length))
-        sequence.extend(zeros)
+        sequence.extend(zeros) 
 
         return sequence
+
+def sampling(sequence, walk_len, max_length):
+    seq_len = len(sequence)
+    seq_index_start = [i*walk_len  for i in range(((seq_len-max_length)//walk_len)+1)]
     
+    return [sequence[i:(i+max_length)] for i in seq_index_start]
+
+def sortbyoffset(df):
+    print('sortbyoffset')
+    sorted = df.sort_values(['code_offset'],ascending=True).groupby('ID')
+    return sorted
 
 def preprocess(input_path,
                 item_list,
@@ -215,8 +232,9 @@ def preprocess(input_path,
                 columns_map_dict, 
                 issue_map, 
                 mimic_def_file,
-                max_length
-                ):
+                max_length,
+                data_type):
+
     for src in ['mimic', 'eicu']:
         df_icu = pd.read_pickle(os.path.join(input_path, src, f'{src}_cohort.pk'))
         df_icu = ID_rename(df_icu, src)
@@ -239,7 +257,7 @@ def preprocess(input_path,
             df = name_dict(df, file, input_path, src, mimic_def_file)
             df = null_convert(df)
             df = ID_filter(df_icu, df)
-            df = time_filter(df_icu, df, src)
+            df = time_filter(df_icu, df, src, data_type)
 
             if item == 'lab':
                 lab = df.copy()
@@ -254,18 +272,33 @@ def preprocess(input_path,
 
         df = merge_df(lab, med ,inf)
         print('lab med inf three categories merged in one!')
+        breakpoint()
+        df = sortbyoffset(df)
+        
         df = list_prep(df, df_icu)
         df = min_length(df, 5).reset_index(drop=True)
         df['code_order'] = df['code_offset'].map(lambda x : offset2order(x))  
         # sequence align with offset order
 
         df['seq_len'] = df['code_name'].map(len)
-        df.loc[df['seq_len']>max_length, 'seq_len']=max_length
-
         #pad
+       
         column_list = ['code_name', 'code_offset', 'value', 'uom', 'code_order']
-        for column in column_list:
-            df[column] = df[column].map(lambda x : pad(x, max_length))
+        if data_type == 'MICU':
+            for column in column_list:
+                df[column] = df[column].map(lambda x : pad(x, max_length))
+        
+        elif data_type == 'TotalICU':
+            df_short = df[df['seq_len'] <= max_length].reset_index(drop=True)
+            df_long = df[df['seq_len'] > max_length].reset_index(drop=True)
+           
+            for i, column in enumerate(column_list):
+                df_short[column] = df[column].map(lambda x : pad(x, max_length))  
+                df_long[column] = df[column].map(lambda x: sampling(x, max_length//3, max_length))
+
+            df_long = df_long.explode(column_list).reset_index(drop=True)
+            df = pd.concat([df_short, df_long], axis=0).reset_index(drop=True)
+            del df_short, df_long
 
         print('Preprocessing completed.')    
         print('Writing', '{}_df.pkl'.format(src), 'to', input_path)

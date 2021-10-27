@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 import re
 from prcs import digit_place_embed
 from functools import partial
+import tqdm
 
 def pad_list(lst : list):
    return np.pad(lst, (0, 150-len(lst)), 'constant', constant_values=(0))
@@ -50,6 +51,7 @@ def agg_col(df, value_mode):
     # VC => code_name + uom / value
     if value_mode == 'NV':
          df['code_name'] = pd.Series([list(map(str, a)) for a in df['code_name']])
+
     elif value_mode =='VA':
         df['value'] = df['value'].map(lambda x : _round(x))
         df['code_name'] = pd.Series([_agg(a,b) for a, b in zip(df['code_name'], df['value'])])
@@ -60,6 +62,7 @@ def agg_col(df, value_mode):
         df['value'] = df['value'].map(lambda x : _value_split(x))
         df['code_name'] = pd.Series([_agg(a,b) for a, b in zip(df['code_name'], df['value'])])
         df['code_name'] = pd.Series([_agg(a,b) for a, b in zip(df['code_name'], df['uom'])])
+
     elif value_mode =='VC':
         df['value'] = df['value'].map(lambda x : _round(x))
         df['code_name'] = pd.Series([_agg(a,b) for a, b in zip(df['code_name'], df['uom'])])
@@ -98,8 +101,8 @@ def tokenize_seq(seq, word_max_len, tokenizer):
 
 
 def convert2numpy(input_path, output_path):
-    value_mode_list = ['NV', 'VA', 'DSVA', 'VC']
-    sources = ['mimic', 'eicu', 'pooled']
+    value_mode_list = ['NV', 'DSVA', 'VC']
+    sources = ['mimic','eicu']
     tokenizer= AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
     for src in sources:
         save_path = f'{output_path}/input/{src}'
@@ -124,7 +127,7 @@ def convert2numpy(input_path, output_path):
             print('tokenization start!')
             # tokenized
             word_max_len = _tokenized_max_length(vocab, tokenizer)
-            token_tmp = [tokenize_seq(seq, word_max_len, tokenizer) for seq in df['code_name']]
+            token_tmp = [tokenize_seq(seq, word_max_len, tokenizer) for seq in tqdm.tqdm(df['code_name'])]
             df['input_ids'] =pd.Series([token['input_ids'] for token in token_tmp])
             df['token_type_ids'] =pd.Series([token['token_type_ids'] for token in token_tmp])
             df['attention_mask'] =pd.Series([token['attention_mask'] for token in token_tmp])
@@ -133,19 +136,23 @@ def convert2numpy(input_path, output_path):
             np.save(os.path.join(save_path, f'input_ids_{value_mode}.npy'), np.array(df['input_ids'])) 
             np.save(os.path.join(save_path, f'token_type_ids_{value_mode}.npy'), np.array(df['token_type_ids'])) 
             np.save(os.path.join(save_path, f'attention_mask_{value_mode}.npy'), np.array(df['attention_mask'])) 
-            
+
+            if value_mode == 'NV':
+                #value
+                value = np.array([df['value']])
+                np.save(os.path.join(save_path, 'value.npy'), value[0])
+
+
             if value_mode =='DSVA':
                 df = digit_place_embed(df, tokenizer)
                 np.save(os.path.join(save_path, f'input_ids_DSVA_DPE.npy'), np.array(df['input_ids'])) 
                 np.save(os.path.join(save_path, f'token_type_ids_DSVA_DPE.npy'), np.array(df['token_type_ids'])) 
                 np.save(os.path.join(save_path, f'attention_mask_DSVA_DPE.npy'), np.array(df['attention_mask']))
         
-        #value
-        value = np.array([df['value']])
-        np.save(os.path.join(save_path, 'value_len.npy'), value)
+       
         
         #seq_len
         seq_len = np.array([df['seq_len']])
-        np.save(os.path.join(save_path, 'seq_len.npy'), seq_len)              
+        np.save(os.path.join(save_path, 'seq_len.npy'), seq_len[0])              
 
     
