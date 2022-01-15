@@ -117,9 +117,9 @@ def time_filter(df_icu, df, source, data_type):
             df[col_name] = pd.to_datetime(df[col_name])
         if data_type =='MICU':  
             df['INTIME+12hr'] = df['INTIME'] + time_delta
-            df = df[(df['code_time']> df['INTIME']) | (df['code_time'] < df['OUTTIME']) | (df['code_time'] < df['INTIME+12hr'])]
+            df = df[(df['code_time']> df['INTIME']) & (df['code_time'] < df['OUTTIME']) & (df['code_time'] < df['INTIME+12hr'])]
         elif data_type =='TotalICU':
-            df = df[(df['code_time']> df['INTIME']) | (df['code_time'] < df['OUTTIME'])]
+            df = df[(df['code_time']> df['INTIME']) & (df['code_time'] < df['OUTTIME'])]
  
         df['code_offset'] = df['code_time'] - df['INTIME']
         df['code_offset'] = df['code_offset'].apply(lambda x : x.seconds//60, 4)
