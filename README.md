@@ -21,7 +21,7 @@ First, download the dataset from these links:
 
 [ccs_multi_dx_tool_2015](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
 
-[icd10cmtoicd9gem](https://www.hcup-us.ahrq.gov/toolssoftware/ccs/Multi_Level_CCS_2015.zip)
+[icd10cmtoicd9gem](https://data.nber.org/gem/icd10cmtoicd9gem.csv)
 
 Second, make directory sturcture like below:
 ```
