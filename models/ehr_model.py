@@ -1,3 +1,7 @@
+"""
+1. Set attributes for EHRModel instance - create embed_model, pred_model instances
+2. Forward: 
+"""
 import os
 import logging
 
@@ -25,13 +29,19 @@ class EHRModel(nn.Module):
         self.val_proj = None
         self.final_proj = None
         
+        # "Value Concatenated(VC)": description, value are embedded separately -> concat -> shrink size to pred_emb_dim
         if args.value_embed_type == 'VC':
+            # value projected: 1 -> pred_emb_dim
             self.val_proj = nn.Linear(1, args.pred_embed_dim)
+            # description, value concatenated (pred_emb_dim*2) -> pred_emb_dim
             self.post_embed_proj = nn.Linear(args.pred_embed_dim*2, args.pred_embed_dim)
 
+        # build instance of embed_model, pred_model
         self.embed_model = self._embed_model.build_model(args)
         self.pred_model = self._pred_model.build_model(args)
 
+        # load pretrained parameters trained from one dataset -> use as starting point for training another dataset
+        # when doing transfer learning, the embed model, pred model should both match the original pretrained models respectively
         if args.transfer:
             logger.info(
                 f"Preparing to transfer pre-trained model {args.model_path}"
@@ -52,6 +62,7 @@ class EHRModel(nn.Module):
                 f'self.pred_model: {self.args.pred_model}'
             )
 
+            # create a new state dictionary for codeemb embed model that only stores param layers that is not 'embedding'
             state_dict = {
                 k: v for k,v in loaded_state_dict.items() if (
                     args.embed_model.startswith('codeemb')
@@ -83,8 +94,18 @@ class EHRModel(nn.Module):
         return sample['label'].float()
 
     def forward(self, value, **kwargs):
+        # type(kwargs) = dict
+        # kwargs: very element in sameple['net_input'] except 'value'
+        # type(value): tensor
+        # value: sample['net_input']['value']
+        breakpoint()
         x = self.embed_model(**kwargs)  # (B, S, E)
+
+        # x.shape: torch.Size([128, 150, 128])
+        # x == descemb_bert model net_output(return value)
+        breakpoint()
         
+        # executed when args.value_embed_type = "VC"
         if self.val_proj:
             # value shape is expected to be (B, S, 1)
             value = value.unsqueeze(dim=2)

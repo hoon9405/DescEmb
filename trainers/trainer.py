@@ -1,3 +1,10 @@
+"""
+1. Define model(ehr_model), criterion, optimizer, dataset
+2. load_dataset(): load dataset based on task / model
+3. train(): 
+"""
+# import pdb
+
 import os
 import logging
 import pprint
@@ -60,8 +67,11 @@ class Trainer(object):
         self.data_loaders = dict()
 
         # print args
+        # TODO: need to take a look at how loggers work in Python
         logger.info(pprint.pformat(vars(args)))
 
+        # runs build_model() method in models __init__.py
+        # runs build_model() method in specific model code(ehr_model) - if model is in MODEL_REGISTRY & not null
         model = models.build_model(args)
 
         logger.info(model)
@@ -76,6 +86,7 @@ class Trainer(object):
 
         self.model = nn.DataParallel(model, device_ids=args.device_ids).to('cuda')
 
+        # ['train', 'valid', 'test']
         for subset in ['train'] + self.valid_subsets:
             self.load_dataset(subset)
 
@@ -143,17 +154,38 @@ class Trainer(object):
             self.model.train()
 
             for sample in tqdm.tqdm(self.data_loaders['train']):
+                # print sample
+                # pdb.set_trace()
                 self.optimizer.zero_grad(set_to_none=True)
 
+                # data: mimic, task: readmission
+                # sample.keys(): 'label', 'net_input'
+                # sample['label'].shape: (128, 1)
+                # sample['net_input'].keys(): ['input_ids', 'token_type_ids', 'attention_mask', 'seq_len', 'value']
+                # sample['net_input']['input_ids'], ['token_type_ids'], ['attention_mask'].shape: [128, 150, 24]
+                # sample['net_input']['seq_len'].shape: [128, 1]
+                # sample['net_input']['value'].shape: [128, 150]
+                breakpoint()
+
                 net_output = self.model(**sample["net_input"])
+
+                # net_output.shape: torch.Size([128, 1])
+                breakpoint()
                 #NOTE we assume self.model is wrapped by torch.nn.parallel.data_parallel.DataParallel
                 logits = self.model.module.get_logits(net_output)
                 target = self.model.module.get_targets(sample).to(logits.device)
+
+                # logits.shape: torch.Size([128, 1])
+                # target.shape: torch.Size([128, 1])
+                breakpoint()
 
                 if self.task == 'diagnosis':
                     loss = self.criterion(logits, target.squeeze(2))
                 else:
                     loss = self.criterion(logits, target)
+
+                # loss: tensor(0.6991, device='cuda:0', grad_fn=<BinaryCrossEntropyWithLogitsBackward>)
+                breakpoint()
 
                 loss.backward()
                 self.optimizer.step()
@@ -166,10 +198,20 @@ class Trainer(object):
                         probs_train = torch.sigmoid(logits).cpu().numpy()
                         preds_train += list(probs_train.flatten())
 
+                # type(truths_train): list
+                # len(truths_train): 128
+                # type(probs_train): numpy.ndarray
+                # probs_train.shape: (128, 1)
+                # type(preds_train): list
+                # len(preds_train): 128
+                breakpoint()
+
             avg_train_loss = total_train_loss / len(self.data_loaders['train'])
             if self.task not in ['mlm', 'w2v']:
                 auroc_train = roc_auc_score(truths_train, preds_train)
                 auprc_train = average_precision_score(truths_train, preds_train, average='micro')
+
+            breakpoint()
 
             with rename_logger(logger, "train"):
                 logger.info(

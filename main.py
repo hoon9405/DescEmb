@@ -1,3 +1,7 @@
+"""
+1. Parse arguments
+2. Run trainer.train()
+"""
 import argparse
 import logging
 import logging.config
@@ -19,6 +23,7 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 
+# imports Trainer, Word2VecTrainer classes directly from trainer.py, word2vec_trainer.py respectively
 from trainers import Trainer, Word2VecTrainer
 
 def get_parser():
@@ -29,6 +34,7 @@ def get_parser():
 
     # checkpoint configs
     parser.add_argument('--input_path', type=str, required=True)
+    # for loading checkpoint
     parser.add_argument('--model_path', type=str)
     parser.add_argument('--save_dir', type=str, default='checkpoints')
     parser.add_argument('--save_prefix', type=str, default='checkpoint')
@@ -119,6 +125,8 @@ def main():
         else []
     )
     args.device_ids = list(range(args.distributed_world_size))
+    # vars(args): return arguments into key-value dictionary format
+    # set_struct(vars(args)): save dictionary-formatted arguments in yaml file
     set_struct(vars(args))
 
     mp.set_sharing_strategy('file_system')
@@ -136,7 +144,7 @@ def main():
     trainer.train()
     logger.info("done training")
 
-
+# write argument info into yaml file
 def set_struct(cfg: dict):
     root = os.path.abspath(
         os.path.dirname(__file__)

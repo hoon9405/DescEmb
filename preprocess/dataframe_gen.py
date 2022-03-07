@@ -272,9 +272,9 @@ def preprocess(input_path,
 
         df = merge_df(lab, med ,inf)
         print('lab med inf three categories merged in one!')
-        breakpoint()
+        # breakpoint()
         df = sortbyoffset(df)
-        
+        breakpoint()
         df = list_prep(df, df_icu)
         df = min_length(df, 5).reset_index(drop=True)
         df['code_order'] = df['code_offset'].map(lambda x : offset2order(x))  

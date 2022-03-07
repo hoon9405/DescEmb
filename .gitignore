@@ -134,3 +134,7 @@ wandb/
 
 # Pyre type checker
 .pyre/
+
+# data preprocessing input, output directories
+data_input_path/
+data_output_path/

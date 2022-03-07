@@ -31,11 +31,13 @@ class BertTextEncoder(nn.Module):
 
         if not args.init_bert_params:   #Loading Huggingface model with random initialized
             config = AutoConfig.from_pretrained(bert_model_config[args.bert_model][0])
+            # does not load model weights
             self.model = AutoModel.from_config(config)
         elif args.init_bert_params_with_freeze:
             with torch.no_grad():
                 self.model = AutoModel.from_pretrained(bert_model_config[args.bert_model][0])
         else:  #Loading Huggingface model with pre-trained parameters
+            # download model and config
             self.model = AutoModel.from_pretrained(bert_model_config[args.bert_model][0])
             self.model = nn.ModuleList(self.model, IdentityLayer())
 
@@ -67,6 +69,7 @@ class BertTextEncoder(nn.Module):
                 )
             )
 
+    # create a class based on argument info
     @classmethod
     def build_model(cls, args):
         """Build a new model instance."""
@@ -84,6 +87,12 @@ class BertTextEncoder(nn.Module):
         return target.long()
 
     def forward(self, input_ids, token_type_ids, attention_mask, **kwargs):
+        # task: readmission, data: mimic
+        # type(input_ids), type(token_type_ids), type(attention_mask) = tensor
+        # kwargs: 'seq_len' info
+        # input_ids, token_type_ids, attention_mask shape = [128, 150, 24]
+        breakpoint()
+        
         if input_ids.dim() == 2:
             input_ids = input_ids.unsqueeze(1)
         bsz, _, word_max_len = input_ids.shape
@@ -94,7 +103,16 @@ class BertTextEncoder(nn.Module):
             "attention_mask": attention_mask.view(-1, word_max_len)
         }
 
+        # bert_args['input_ids'], ['token_type_ids'], ['attention_mask'] shape: [19200, 24]
+        breakpoint()
+
         bert_outputs = self.model(**bert_args)
+
+        # type(bert_outputs): BaseModelOutputWithPoolingAndCrossAttentions
+        # bert_outputs[0]: last_hidden_state tensor
+        # bert_outputs[0].shape: [19200, 24, 128]
+        # bert_outputs[0][:, 0, :].shape: [19200, 128]
+        breakpoint()
 
         net_output = (
             self.post_encode_proj(
@@ -105,6 +123,10 @@ class BertTextEncoder(nn.Module):
         if self.mlm_proj:
             mlm_output = self.mlm_proj(bert_outputs[0]) # (B x S, W, H) -> (B x S, W, Bert-vocab)
             return mlm_output
+
+        # type(net_output) = tensor
+        # net_output.shape = [128, 150, 128]
+        breakpoint()
 
         return net_output
 
