@@ -15,7 +15,7 @@ from utils.trainer_utils import (
     should_stop_early
 )
 from datasets import (
-  Dataset,
+  CodeDataset,
   TokenizedDataset,
   MLMTokenizedDataset
 )
@@ -34,9 +34,9 @@ class Trainer(object):
         self.disable_validation = args.disable_validation
         self.patience = args.patience
 
-        self.data = args.data
+        self.data = args.src_data
         self.eval_data = args.eval_data
-        self.value_embed_type = args.value_embed_type
+        self.value_mode = args.value_mode
         self.valid_subsets = args.valid_subsets
         self.fold = args.fold
         self.task = args.task
@@ -94,20 +94,20 @@ class Trainer(object):
                 eval_data=self.eval_data,
                 fold=self.fold,
                 split=split,
-                value_embed_type=self.value_embed_type,
+                value_mode=self.value_mode,
                 task=self.task,
                 seed=self.seed,
                 ratio=self.ratio,
                 mlm_prob=self.mlm_prob
             )
         elif self.embed_model_type.startswith('codeemb'):
-            dataset = Dataset(
+            dataset = CodeDataset(
                 input_path=self.input_path,
                 data=self.data,
                 eval_data=self.eval_data,
                 fold=self.fold,
                 split=split,
-                value_embed_type=self.value_embed_type,
+                value_mode=self.value_mode,
                 task=self.task,
                 seed=self.seed,
                 ratio=self.ratio
@@ -119,7 +119,7 @@ class Trainer(object):
                 eval_data=self.eval_data,
                 fold=self.fold,
                 split=split,
-                value_embed_type=self.value_embed_type,
+                value_mode=self.value_mode,
                 task=self.task,
                 seed=self.seed,
                 ratio=self.ratio
@@ -128,7 +128,7 @@ class Trainer(object):
             raise NotImplementedError(self.model_type)
 
         self.data_loaders[split] = DataLoader(
-            dataset, collate_fn=dataset.collator, batch_size=self.batch_size, num_workers=8, shuffle=True
+            dataset, collate_fn=dataset.collator, batch_size=self.batch_size, num_workers=0, shuffle=False
         )
 
     def train(self):
@@ -142,9 +142,8 @@ class Trainer(object):
 
             self.model.train()
 
-            for sample in tqdm.tqdm(self.data_loaders['train']):
+            for sample in tqdm.tqdm(self.data_loaders['train']):    
                 self.optimizer.zero_grad(set_to_none=True)
-
                 net_output = self.model(**sample["net_input"])
                 #NOTE we assume self.model is wrapped by torch.nn.parallel.data_parallel.DataParallel
                 logits = self.model.module.get_logits(net_output)
@@ -181,6 +180,7 @@ class Trainer(object):
             should_stop = self.validate_and_save(epoch, self.valid_subsets)
             if should_stop:
                 break
+
         
     def validate(
         self,
@@ -270,7 +270,6 @@ class Trainer(object):
 
         should_stop = False
 
-        #TODO add more options for validation (e.g. validate_metric, validate_interval, ...)
         valid_auprcs = self.validate(epoch, valid_subsets)
         should_stop |= should_stop_early(self.patience, valid_auprcs[0])
 

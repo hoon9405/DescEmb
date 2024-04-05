@@ -44,7 +44,7 @@ class BertTextEncoder(nn.Module):
             self.mlm_proj = nn.Linear(bert_model_config[args.bert_model][1], 28996)
         self.post_encode_proj = nn.Linear(bert_model_config[args.bert_model][1], self.pred_embed_dim)
 
-        if args.value_embed_type =='DSVA_DPE':
+        if args.value_mode =='DSVA_DPE':
             old_token_type_embeddings = self.model.embeddings.token_type_embeddings
             new_token_type_embeddings = self.model._get_resized_embeddings(old_token_type_embeddings, 28)
             self.model.embeddings.token_type_embeddings = new_token_type_embeddings
@@ -117,7 +117,7 @@ class RNNTextEncoder(nn.Module):
         self.enc_hidden_dim = args.enc_hidden_dim
         self.pred_embed_dim = args.pred_embed_dim
         self.subword_embed_layer = SubwordInputLayer(args)
-        self.value_embed_type = args.value_embed_type
+        self.value_mode = args.value_mode
         self.model = nn.GRU(
             self.enc_embed_dim,
             self.enc_hidden_dim,
@@ -134,9 +134,9 @@ class RNNTextEncoder(nn.Module):
         if args.task == "mlm":
             self.mlm_proj = nn.Linear(self.enc_hidden_dim * 2, 28996)
 
-        if self.mlm_proj is None and self.value_embed_type == 'DSVA_DPE':
+        if self.mlm_proj is None and self.value_mode == 'DSVA_DPE':
             self.value_embedding = nn.Embedding(28, self.enc_embed_dim)
-
+        
         self.post_encode_proj = nn.Linear(self.enc_hidden_dim * 2, self.pred_embed_dim)
     
         if not args.transfer and args.load_pretrained_weights:
@@ -178,7 +178,7 @@ class RNNTextEncoder(nn.Module):
 
             self.model.flatten_parameters()
             if self.value_embedding:
-                type_ids = self.type_embedding(
+                type_ids = self.value_embedding (
                     token_type_ids.view(-1, word_max_len)
                 )
             input_ids = input_ids.view(-1, word_max_len)

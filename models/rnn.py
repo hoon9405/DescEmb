@@ -24,6 +24,7 @@ class RNNModel(nn.Module):
             self.pred_hidden_dim,
             18 if args.task == 'diagnosis' else 1
         )
+        self.max_event_len = args.max_event_len
 
     @classmethod
     def build_model(cls, args):
@@ -44,6 +45,7 @@ class RNNModel(nn.Module):
 
     def pack_pad_seq(self, x, lengths):
         lengths = lengths.squeeze(-1).cpu()
+        lengths[lengths>self.max_event_len] = self.max_event_len
         
         packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         output, _ = self.model(packed)

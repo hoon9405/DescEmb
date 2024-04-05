@@ -8,7 +8,7 @@ import torch.utils.data
 
 import numpy as np
 import pandas as pd
-
+import os
 from transformers import AutoTokenizer
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class BaseDataset(torch.utils.data.Dataset):
         eval_data,
         fold,
         split,
-        value_embed_type,
+        value_mode,
         task,
         seed,
         ratio,
@@ -35,7 +35,9 @@ class BaseDataset(torch.utils.data.Dataset):
         if task in ["mlm", "w2v"]:
             eval_data = data
 
-        self.input_path = input_path
+        self.input_path = input_path 
+        if task=='mlm':
+            self.input_path = os.path.join(input_path, 'mlm')
         self.split = split
         self.prefix = (
             eval_data if (
@@ -43,25 +45,23 @@ class BaseDataset(torch.utils.data.Dataset):
             ) else data
         )
         self.data_path = os.path.join(self.input_path, self.prefix)
-        self.label_path = os.path.join(self.input_path, "label")
+        self.label_path = os.path.join(self.data_path, "label")
 
-
-        self.ext = "_" + str(value_embed_type) + ".npy"
+        self.ext = "_" + str(value_mode) + ".npy"
         self.task = task
         self.seed = seed
-
 
         self.labels = None
         self.tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 
-        self.ratio = '' if ratio == '100' else '_' + ratio
+        self.ratio = ratio
 
         if fold:
             self.fold = fold
         else:
             self.fold = os.path.join(
-                self.input_path, "fold", "{}_{}_fold_split{}.csv".format(
-                    self.prefix, self.seed, self.ratio
+                self.data_path, "fold", "fold_split_{}.csv".format(
+                    self.seed
                 )
             )
 
@@ -80,7 +80,7 @@ class BaseDataset(torch.utils.data.Dataset):
             hit = 0
     
         df = pd.read_csv(self.fold)
-        splits = df[self.task].values
+        splits = df[self.task+'_fold'+f'_{self.ratio}'].values
         idcs = np.where(splits == hit)[0]
         return idcs
 
@@ -119,9 +119,10 @@ class BaseDataset(torch.utils.data.Dataset):
         random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
         inputs[indices_random] = random_words[indices_random]
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+       
         return inputs, labels
 
-class Dataset(BaseDataset):
+class CodeDataset(BaseDataset):
     def __init__(
         self,
         input_path,
@@ -129,7 +130,7 @@ class Dataset(BaseDataset):
         eval_data,
         fold,
         split,
-        value_embed_type,
+        value_mode,
         task,
         seed,
         ratio,
@@ -140,57 +141,53 @@ class Dataset(BaseDataset):
             eval_data=eval_data,
             fold=fold,
             split=split,
-            value_embed_type=value_embed_type,
+            value_mode=value_mode,
             task=task,
             seed=seed,
             ratio=ratio,
         )
         hit_idcs = self.get_fold_indices()
 
-        self.sequential_lengths = None
-
-        self.value = np.load(
-            file=os.path.join(self.data_path, "value.npy")
-        )
-        self.value = self.value[hit_idcs]
-
-        if self.data == 'pooled':
-            self.input_idcs = np.load(
-                file=os.path.join(self.data_path, "pooled_input_index{}".format(self.ext)),
-            )
-        else:
-            self.input_idcs = np.load(
-                file=os.path.join(self.data_path, "{}_input_index{}".format(self.prefix, self.ext))
-            )
-        self.input_idcs = self.input_idcs[hit_idcs]
-
         self.sequential_lengths = np.load(
             file=os.path.join(self.data_path, f"seq_len.npy"),
         )
-        self.sequential_lengths = self.sequential_lengths[hit_idcs]
 
+        self.value = np.load(
+            file=os.path.join(self.data_path, "value.npy"),
+        allow_pickle=True)
+        self.value = self.value[hit_idcs]
+        
+        self.input_idcs = np.load(
+            file=os.path.join(self.data_path, "code_index{}".format(self.ext)),
+        allow_pickle=True
+        )
+        self.input_idcs = self.input_idcs[hit_idcs]
+
+        
         self.label = np.load(
             file=os.path.join(
-                self.label_path, "{}_{}_label.npy".format(self.prefix, self.task)
-            ).format(self.prefix, self.task),
+                self.label_path, "{}.npy".format(self.task)
+            )
         )
         self.label = torch.tensor(self.label[hit_idcs], dtype=torch.long)
         
         logger.info(f"loaded {len(self.input_idcs)} {self.split} samples")
-
+        
     def __len__(self):
         return len(self.input_idcs)
     
     def __getitem__(self, index):
+        prefix_tensor = torch.LongTensor([1])
         input_idcs = torch.LongTensor(self.input_idcs[index])
+        input_idcs = torch.cat((prefix_tensor, input_idcs), dim=0)
         seq_len = torch.LongTensor(self.sequential_lengths).unsqueeze(-1)[index]
         label = torch.LongTensor(self.label).unsqueeze(-1)[index]
         value = torch.Tensor(self.value[index])    
         
         return {
                 'input_ids': input_idcs,
-                'seq_len': seq_len,
                 'value': value,
+                'seq_len': seq_len,
                 'label': label
         }
     
@@ -201,7 +198,7 @@ class Dataset(BaseDataset):
         
         input = {"input_ids": torch.stack([s["input_ids"] for s in samples])}
         input["seq_len"] = torch.stack([s["seq_len"] for s in samples])
-        input["value"] = torch.stack([s["label"] for s in samples])
+        input["value"] = torch.stack([s["value"] for s in samples])
         out = {"label": torch.stack([s["label"] for s in samples])}
 
         out["net_input"] = input
@@ -215,7 +212,7 @@ class TokenizedDataset(BaseDataset):
         eval_data,
         fold,
         split,
-        value_embed_type,
+        value_mode,
         task,
         seed,
         ratio,
@@ -226,7 +223,7 @@ class TokenizedDataset(BaseDataset):
             eval_data=eval_data,
             fold=fold,
             split=split,
-            value_embed_type=value_embed_type,
+            value_mode=value_mode,
             task=task,
             seed=seed,
             ratio=ratio,
@@ -235,36 +232,32 @@ class TokenizedDataset(BaseDataset):
         hit_idcs = self.get_fold_indices()
         col_names = ['input_ids', 'token_type_ids', 'attention_mask']
 
-        self.offset_orders = None
-        self.sequential_lengths = None
+        self.sequential_lengths = np.load(
+            file=os.path.join(self.data_path, f"seq_len.npy"),
+        )
 
         self.value = np.load(
-            file=os.path.join(self.data_path, "value.npy")
+            file=os.path.join(self.data_path, "value.npy"),
+            allow_pickle=True
         )
         self.value = self.value[hit_idcs]
-
+        
         self.input_ids, self.token_type_ids, self.attention_mask = (
             np.load(
                 file=os.path.join(self.data_path, f"{col}{self.ext}"),
-            ) for col in col_names
+            allow_pickle=True) for col in col_names
         )
         self.input_ids = self.input_ids[hit_idcs]
         self.token_type_ids = self.token_type_ids[hit_idcs]
         self.attention_mask = self.attention_mask[hit_idcs]
 
-        self.sequential_lengths = np.load(
-            file=os.path.join(self.data_path, "seq_len.npy"),
-        )
-        self.sequential_lengths = self.sequential_lengths[hit_idcs]
-
-
         self.label = np.load(
             file=os.path.join(
-                self.label_path, "{}_{}_label.npy".format(self.prefix, self.task)
-            ).format(self.prefix, self.task),
+                self.label_path, "{}.npy".format(self.task)
+            )
         )
         self.label = torch.tensor(self.label[hit_idcs], dtype=torch.long)
-    
+        
         logger.info(f"loaded {len(self.input_ids)} {self.split} samples")
 
     def __len__(self):
@@ -310,7 +303,7 @@ class MLMTokenizedDataset(BaseDataset):
         eval_data,
         fold,
         split,
-        value_embed_type,
+        value_mode,
         task,
         seed,
         ratio,
@@ -322,7 +315,7 @@ class MLMTokenizedDataset(BaseDataset):
             eval_data=eval_data,
             fold=fold,
             split=split,
-            value_embed_type=value_embed_type,
+            value_mode=value_mode,
             task=task,
             seed=seed,
             ratio=ratio,
@@ -330,11 +323,12 @@ class MLMTokenizedDataset(BaseDataset):
         self.mlm_prob = mlm_prob
 
         col_names = ['input_ids', 'token_type_ids', 'attention_mask']
-
+        
         self.input_ids, self.token_type_ids, self.attention_mask = (
             np.load(
-                file=os.path.join(self.data_path, f"{col}_unique_code.npy")
-            ) for col in col_names
+                file=os.path.join(self.data_path, f"{col}{self.ext}"),
+                allow_pickle=True
+            )[0] for col in col_names
         )
         logger.info(f"loaded {len(self.input_ids)} {self.split} samples")
 
@@ -353,7 +347,7 @@ class MLMTokenizedDataset(BaseDataset):
             'attention_mask': attn_mask,
             'mlm_labels': mlm_labels,
         }
-    
+        
     def collator(self, samples):
         samples = [s for s in samples if s["input_ids"] is not None]
         if len(samples) == 0:
@@ -370,33 +364,33 @@ class MLMTokenizedDataset(BaseDataset):
 class Word2VecDataset(BaseDataset):
     def __init__(
         self,
-        input_path,
+        input_path, 
         data,
         eval_data,
         fold,
         split,
-        value_embed_type,
+        value_mode,
         task,
         seed,
         ratio,
     ):
         super().__init__(
-            self,
             input_path,
             data,
             eval_data,
             fold,
             split,
-            value_embed_type,
+            value_mode,
             task,
             seed,
             ratio,
         )
 
         input_idcs = np.load(
-            file=os.path.join(self.data_path, "{}_input_index{}".format(self.prefix, self.ext))
+            file=os.path.join(
+                self.data_path, f"code_index{self.ext}")
         )
-        input_idcs = self.indexing(input_idcs, self.data, self.seed)
+
         self.pos_pair, self.neg_pair = self.preprocess(input_idcs)
         self.pos_pair.pop(0)
         self.index_dict = {i: k for i, k in enumerate(self.pos_pair.keys())}
@@ -417,16 +411,6 @@ class Word2VecDataset(BaseDataset):
             neg = random.choices(self.neg_pair[item], k=30)
 
         return torch.LongTensor([item]), torch.LongTensor(pos), torch.LongTensor(neg)
-
-    def indexing(self, data, dataname, seed):
-        hit = 1
-
-        df = pd.read_csv(os.path.join(self.path, 'fold', f'{dataname}_{seed}_fold_split.csv'))
-        splits = df[self.task].values
-        idcs = np.where(splits == hit)[0]
-
-        data = data[idcs]
-        return data
 
     def preprocess(self, mimic):
         pos_pair = {}

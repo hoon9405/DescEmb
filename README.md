@@ -15,7 +15,7 @@ The paper can be found in this link:
 ## Prepare training data
 First, download the dataset from these links: 
 
-[MIMIC-III](https://physionet.org/content/mimiciii/1.4/)
+[MIMIC-III](https://physionet.org/content/iii/1.4/)
 
 [eICU](https://physionet.org/content/eicu-crd/2.0/)
 
@@ -58,9 +58,10 @@ data_output_path
 ```
 Then run preprocessing code
 ```shell script
-$ python preprocess_main.py 
-    --data_input_path $csv_directory
-    --data_output_path $run_ready_directory 
+$ python preprocess_main.py
+    --src_data $data
+    --dataset_path $data_src_directory
+    --dest_path $run_ready_directory 
 ```
 Note that pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Core Processor, and requires 60GB of RAM.
 
@@ -72,7 +73,7 @@ Note that pre-processing takes about 1hours in 128 cores of AMD EPYC 7502 32-Cor
 $ python main.py \
     --distributed_world_size $WORLDSIZE \
     --input_path /path/to/data \
-    --data $data \
+    --src_data $data \
     --task mlm \
     --mlm_prob $percent \
     --model $model
@@ -84,7 +85,7 @@ $ python main.py \
 $ python main.py \
     --distributed_world_size $WORLDSIZE \
     --input_path /path/to/data \
-    --data $data \
+    --src_data $data \
     --task w2v
     --model codeemb
 ```
@@ -101,7 +102,7 @@ Other configurations will set to be default, which were used in the DescEmb pape
 
 `$ratio` should be set to one of [10, 30, 50, 70, 100] (default: 100)
 
-`$value` should be set to one of ['nonconcat', 'VA', 'DSVA', 'DSVA_DPE', 'VC']
+`$value` should be set to one of ['NV', 'VA', 'DSVA', 'DSVA_DPE', 'VC']
 
 `$task` should be set to one of ['readmission', 'mortality', 'los_3day', 'los_7day', 'diagnosis']
 
@@ -115,9 +116,9 @@ $ python main.py \
     --model ehr_model \
     --embed_model codeemb \
     --pred_model rnn \
-    --data $data \
+    --src_data $data \
     --ratio $ratio \
-    --value_embed_type $value \
+    --value_mode $value \
     --task $task
 ```
 ### Train a new DescEmb model:
@@ -129,9 +130,9 @@ $ python main.py \
     --model ehr_model \
     --embed_model $descemb \
     --pred_model rnn \
-    --data $data \
+    --src_data $data \
     --ratio $ratio \
-    --value_embed_type $value \
+    --value_mode $value \
     --task $task
 ```
 Note: if you want to train with pre-trained BERT model, add command line parameters `--init_bert_params` or `--init_bert_params_with_freeze`. `--init_bert_params_with_freeze` enables the model to load and freeze BERT parameters.
@@ -149,9 +150,9 @@ $ python main.py \
     --model ehr_model \
     --embed_model codeemb \
     --pred_model rnn \
-    --data $data \
+    --src_data $data \
     --ratio $ratio \
-    --value_embed_type $value \
+    --value_mode $value \
     --task $task
 ```
 ### Fine-tune a pre-trained DescEmb model:
@@ -164,9 +165,9 @@ $ python main.py \
     --model ehr_model \
     --embed_model $descemb \
     --pred_model rnn \
-    --data $data \
+    --src_data $data \
     --ratio $ratio \
-    --value_embed_type $value \
+    --value_mode $value \
     --task $task
 ```
 
@@ -180,9 +181,9 @@ $ python main.py \
     --model ehr_model \
     --embed_model $embed_model \
     --pred_model rnn \
-    --data $data \
+    --src_data $data \
     --ratio $ratio \
-    --value_embed_type $value \
+    --value_mode $value \
     --task $task \
 ```
 Note that `--embed_model` and `pred_model` should be matched with the transferred model.

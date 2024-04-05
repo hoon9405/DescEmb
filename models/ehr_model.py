@@ -25,7 +25,7 @@ class EHRModel(nn.Module):
         self.val_proj = None
         self.final_proj = None
         
-        if args.value_embed_type == 'VC':
+        if args.value_mode == 'VC':
             self.val_proj = nn.Linear(1, args.pred_embed_dim)
             self.post_embed_proj = nn.Linear(args.pred_embed_dim*2, args.pred_embed_dim)
 
@@ -37,6 +37,9 @@ class EHRModel(nn.Module):
                 f"Preparing to transfer pre-trained model {args.model_path}"
             )
             loaded_checkpoint = torch.load(args.model_path)
+            logger.info(
+                f"Loaded checkpoint {args.model_path}"
+            )
             loaded_state_dict = loaded_checkpoint['model_state_dict']
             loaded_args = loaded_checkpoint['args']
 
@@ -84,7 +87,7 @@ class EHRModel(nn.Module):
 
     def forward(self, value, **kwargs):
         x = self.embed_model(**kwargs)  # (B, S, E)
-        
+       
         if self.val_proj:
             # value shape is expected to be (B, S, 1)
             value = value.unsqueeze(dim=2)

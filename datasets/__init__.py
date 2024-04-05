@@ -1,5 +1,5 @@
 from .dataset import (
-    Dataset,
+    CodeDataset,
     TokenizedDataset,
     MLMTokenizedDataset,
     Word2VecDataset,

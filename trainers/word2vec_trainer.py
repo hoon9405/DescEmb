@@ -8,48 +8,56 @@ from torch.utils.data import DataLoader
 from datasets.dataset import Word2VecDataset
 from models.word2vec import Word2VecModel
 from utils.trainer_utils import rename_logger, EarlyStopping
+import pickle
 
 logger = logging.getLogger(__name__)
 
 class Word2VecTrainer():
     def __init__(self, args):
-        index_size_dict = {
-                      'nonconcat' : {
-                    'mimic' : 1889,
-                    'eicu' : 1534,
-                    'both' : 3223
-                        },
-                     'concat_a' : {
-                    'mimic' : 70873,
-                    'eicu' : 34424,
-                    'both' : 104353
-                        },
-                      'concat_b' : {
-                    'mimic' : 70873,
-                    'eicu' : 34424,
-                    'both' : 104353
-                        },
-                      'concat_c' : {
-                    'mimic' : 70873,
-                    'eicu' : 34424,
-                    'both' : 104353
-                        },
-                    'concat_d': {
-                        'mimic': 3850,
-                        'eicu': 4354,
-                        'both': 8095
-                    }
-                      }
 
-        self.dataloader = DataLoader(dataset=Word2VecDataset(args), batch_size=args.batch_size, shuffle=True)
+        self.input_path = args.input_path
+        self.data = args.src_data
+        self.eval_data = args.eval_data
+        self.value_mode = args.value_mode
+        self.valid_subsets = args.valid_subsets
+        self.fold = args.fold
+        self.task = args.task
 
-        self.model = Word2VecModel(index_size_dict[args.value_embed_type][args.data], emb_dim=128).cuda()
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
+        self.seed = args.seed
+        self.ratio = args.ratio
+        self.lr = args.lr
+        self.batch_size = args.batch_size
+        self.n_epochs = args.n_epochs
 
         self.save_dir = args.save_dir
         self.save_prefix = args.save_prefix
 
-        self.n_epochs = args.n_epochs
+        if args.src_data == 'pooled':
+            mimic_dict = self.vocab_load(args.input_path, 'mimiciii', args.value_mode)
+            eicu_dict = self.vocab_load(args.input_path, 'eicu', args.value_mode)
+            index_size = len(mimic_dict) + len(eicu_dict) - 3
+        else:
+            vocab_dict = self.vocab_load(args.input_path, args.src_data, args.value_mode)
+            index_size = len(vocab_dict)
+
+        dataset = Word2VecDataset(
+            input_path=self.input_path,
+            data=self.data,
+            eval_data=self.eval_data,
+            fold=self.fold,
+            split=self.valid_subsets,
+            value_mode=self.value_mode,
+            task=self.task,
+            seed=self.seed,
+            ratio=self.ratio
+        )
+
+        self.dataloader = DataLoader(
+            dataset=dataset, batch_size=args.batch_size, shuffle=True
+            )
+
+        self.model = Word2VecModel(index_size, emb_dim=args.enc_embed_dim).cuda()
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
 
         self.early_stopping = EarlyStopping(patience=20, verbose=True)
 
@@ -100,3 +108,12 @@ class Word2VecTrainer():
 
             if self.early_stopping.early_stop is True:
                 break
+
+    def vocab_load(self, data_path, src_data, value_mode):
+        vocab_path = os.path.join(
+            data_path, src_data, f'code_index_{value_mode}_vocab.pkl'
+            )
+        with open(vocab_path, 'rb') as file:
+            vocab_dict = pickle.load(file)
+        return vocab_dict
+    

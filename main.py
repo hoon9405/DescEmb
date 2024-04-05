@@ -34,7 +34,7 @@ def get_parser():
     parser.add_argument('--save_prefix', type=str, default='checkpoint')
 
     parser.add_argument(
-        '--patience', type=int, default=-1,
+        '--patience', type=int, default=5,
         help= (
             'early stop training if valid performance does not '
             + 'improve for N consecutive validation runs'
@@ -46,26 +46,26 @@ def get_parser():
     )
 
     # dataset
-    parser.add_argument('--data', choices=['mimic', 'eicu', 'pooled'], type=str, required=True)
-    parser.add_argument('--eval_data', choices=['mimic', 'eicu', 'pooled'], type=str, default=None, required=False)
-    parser.add_argument('--value_embed_type', choices=['VA','DSVA','DSVA_DPE','VC', 'nonconcat'], default='nonconcat')
+    parser.add_argument('--src_data', choices=['mimiciii', 'eicu', 'pooled'], type=str, required=True)
+    parser.add_argument('--eval_data', choices=['mimiciii', 'eicu', 'pooled'], type=str, default=None, required=False)
+    parser.add_argument('--value_mode', choices=['NV', 'VA','DSVA','DSVA_DPE','VC'], default='NV')
     parser.add_argument('--fold', type=str, default=None)
     parser.add_argument('--valid_subsets', type=str, default="valid, test")
 
     parser.add_argument(
         '--task',
-        choices=['readmission', 'mortality', 'los_3day', 'los_7day', 'diagnosis'],
+        choices=['readmission', 'mortality', 'los_3day', 'los_7day', 'diagnosis', 'mlm', 'w2v'],
         type=str,
         default='readmission',
         help=""
     )
 
     # trainer
-    parser.add_argument('--seed', type=int, default=2021)
+    parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--ratio', choices=['10', '30', '50', '70', '90', '100'], type=str, default= '100')
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--batch_size', type=int, default=128)
     
     # encoder model configs
     parser.add_argument('--enc_embed_dim', type=int, default=128)
@@ -76,7 +76,7 @@ def get_parser():
     parser.add_argument('--dropout', type=int, default=0.3)
     parser.add_argument('--pred_embed_dim', type=int, default=128)
     parser.add_argument('--pred_hidden_dim', type=int, default=256)
-
+    parser.add_argument('--max_event_len', type=int, default=150)
     # mlm pretrain & finetune
     parser.add_argument('--mlm_prob', type=float, default=0.3)
     parser.add_argument('--load_pretrained_weights', action='store_true')

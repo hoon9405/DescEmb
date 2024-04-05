@@ -6,9 +6,9 @@ import re
 import random
 import tqdm
 
-def mimic_inf_merge(file, input_path, src):
-    df_inf_mv_mm = pd.read_csv(os.path.join(input_path, src,'INPUTEVENTS_MV'+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01)
-    df_inf_cv_mm = pd.read_csv(os.path.join(input_path, src, 'INPUTEVENTS_CV'+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01)
+def mimic_inf_merge(file, input_path):
+    df_inf_mv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_MV'+'.csv'))
+    df_inf_cv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_CV'+'.csv'))
     df_inf_mv_mm['CHARTTIME'] = df_inf_mv_mm['STARTTIME']
     df_inf_mm = pd.concat([df_inf_mv_mm, df_inf_cv_mm], axis=0).reset_index(drop=True)
     print('mimic INPUTEVENTS merge!') 
@@ -16,8 +16,8 @@ def mimic_inf_merge(file, input_path, src):
     return df_inf_mm
 
 
-def eicu_med_revise(file, input_path, src):
-    df = pd.read_csv(os.path.join(input_path, src, file+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01)
+def eicu_med_revise(file, input_path):
+    df = pd.read_csv(os.path.join(input_path, file+'.csv'))
     df['split'] = df['dosage'].apply(lambda x: str(re.sub(',', '',str(x))).split())
     def second(x):
         try:
@@ -45,8 +45,8 @@ def eicu_med_revise(file, input_path, src):
     return df
 
 
-def eicu_inf_revise(file, input_path, src):
-    df = pd.read_csv(os.path.join(input_path, src, file+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01 )
+def eicu_inf_revise(file, input_path):
+    df = pd.read_csv(os.path.join(input_path, file+'.csv'), skiprows=lambda i: i>0 and random.random() > 0.01 )
     df['split'] = df['drugname'].apply(lambda x: str(x).rsplit('(', maxsplit=1))
     def addp(x):
         if len(x)==2:
@@ -85,20 +85,23 @@ def issue_delete(df, csv_file, issue_map):
     return df
 
 
-def name_dict(df, csv_file, input_path, src, mimic_def_file):
-    if csv_file in mimic_def_file:
-        dict_name= mimic_def_file[csv_file]
-        dict_path = os.path.join(input_path, src, dict_name+'.csv')
+def name_dict(df, csv_file, dataset_path, def_file):
+    # INPUTEVENTS ITEMID 30140 -> nan
+    if csv_file in def_file:
+        dict_name= def_file[csv_file]
+        dict_path = os.path.join(dataset_path, dict_name+'.csv')
         code_dict = pd.read_csv(dict_path)
         key = code_dict['ITEMID']
         value = code_dict['LABEL']
         code_dict = dict(zip(key,value))
         df['code_name'] = df['code_name'].map(code_dict)
-
     return df
 
 
 def null_convert(df):
+    # null event remove
+    df = df[df['code_name'].notnull()]
+    df = df.reset_index(drop=True)
     df = df.fillna(' ')
 
     return df
@@ -108,27 +111,28 @@ def ID_filter(df_icu, df):
     return df[df['ID'].isin(df_icu['ID'])]
 
 
-def time_filter(df_icu, df, source, data_type):
+def time_filter(df_icu, df, src_data, data_type):
     time_delta = datetime.timedelta(hours=12)
-    if source =='mimic': 
+    if src_data =='mimiciii': 
         df = pd.merge(df, df_icu[['ID', 'INTIME', 'OUTTIME']], how='left', on='ID')
         df = df[df['code_time']!=' ']
         for col_name in ['code_time', 'INTIME', 'OUTTIME']:
             df[col_name] = pd.to_datetime(df[col_name])
-        if data_type =='MICU':  
+        if data_type =='predict':  
             df['INTIME+12hr'] = df['INTIME'] + time_delta
             df = df[(df['code_time']> df['INTIME']) & (df['code_time'] < df['OUTTIME']) & (df['code_time'] < df['INTIME+12hr'])]
-        elif data_type =='TotalICU':
+        elif data_type =='pretrain':
             df = df[(df['code_time']> df['INTIME']) & (df['code_time'] < df['OUTTIME'])]
  
         df['code_offset'] = df['code_time'] - df['INTIME']
         df['code_offset'] = df['code_offset'].apply(lambda x : x.seconds//60, 4)
 
-    elif source =='eicu':
-        if data_type =='MICU':
+    elif src_data =='eicu':
+        if data_type =='predict':
             df = df[(df['code_offset']> 0 ) | (df['code_offset'] < 12*60)]    
-        elif data_type =='TotalICU':
-            df = df[df['code_offset']> 0]   
+        elif data_type =='pretrain':
+            df = df[df['code_offset']> 0]  
+             
     return df            
 
   
@@ -193,10 +197,10 @@ def making_vocab(df):
     return vocab_dict
 
 
-def ID_rename(df_icu, src):
-    if src =='mimic' : 
+def ID_rename(df_icu, src_data):
+    if src_data =='mimiciii' : 
         icu_ID = 'HADM_ID'
-    elif src=='eicu':
+    elif src_data=='eicu':
         icu_ID = 'patientunitstayid'
         
     df_icu['ID'] = df_icu[icu_ID]
@@ -223,92 +227,100 @@ def sampling(sequence, walk_len, max_length):
 
 def sortbyoffset(df):
     print('sortbyoffset')
-    sorted = df.sort_values(['code_offset'],ascending=True).groupby('ID')
+    sorted = df.sort_values(['code_offset'],ascending=True)
     return sorted
 
-def preprocess(input_path,
-                item_list,
-                csv_files_dict, 
-                columns_map_dict, 
-                issue_map, 
-                mimic_def_file,
-                max_length,
-                data_type):
 
-    for src in ['mimic', 'eicu']:
-        df_icu = pd.read_pickle(os.path.join(input_path, src, f'{src}_cohort.pk'))
-        df_icu = ID_rename(df_icu, src)
-        for item in item_list:
-            print('data preparation initialization .. {} {}'.format(src, item))
-            file = csv_files_dict[src][item]
-            columns_map = columns_map_dict[src][file] # the files from mimic that we want
-            if src =='mimic' and item =='inf':
-                df = mimic_inf_merge(file, input_path, src)
-            elif src=='eicu' and item=='med':
-                df = eicu_med_revise(file, input_path, src)
-            elif src=='eicu' and item=='inf':
-                df = eicu_inf_revise(file, input_path, src)
-            else:
-                df = pd.read_csv(os.path.join(input_path, src, file+'.csv'))
-            print('df_load ! .. {} {}'.format(src, item))
+def preprocess(dataset_path,
+               dest_path,
+               src_data,
+               input_tables,
+               csv_files_dict, 
+               columns_map_dict, 
+               issue_map, 
+               def_file,
+               event_max_length,
+               event_min_length,
+               data_type,
+               debug
+                ):
 
-            df = column_rename(df, columns_map)
-            df = issue_delete(df, file, issue_map)
-            df = name_dict(df, file, input_path, src, mimic_def_file)
-            df = null_convert(df)
-            df = ID_filter(df_icu, df)
-            df = time_filter(df_icu, df, src, data_type)
+    
+    df_icu = pd.read_pickle(os.path.join(dest_path, f'{src_data}_cohort.pkl'))
+    
+    if os.path.exists(os.path.join(dest_path, f'{src_data}_df.pkl')):
+        print(f'{src_data}_df.pkl already exists skip dataframe generation step!___')
+        return 
+    
+    df_icu = ID_rename(df_icu, src_data)
+    for table in input_tables:
+        print('data preparation initialization .. {} {}'.format(src_data, table))
+        file = csv_files_dict[table]
+        if columns_map_dict is not None:
+            columns_map = columns_map_dict[file] # the files from mimic that we want
+        
+        if src_data =='mimiciii' and table =='inf':
+            df = mimic_inf_merge(file, dataset_path)
+        elif src_data=='eicu' and table=='med':
+            df = eicu_med_revise(file, dataset_path)
+        elif src_data=='eicu' and table=='inf':
+            df = eicu_inf_revise(file, dataset_path)
+        else:
+            df = pd.read_csv(os.path.join(dataset_path, file+'.csv'))
+        print('df_load ! .. {} {}'.format(src_data, table))
+        
+        if debug ==True:
+            df = df.sample(n=len(df)//10)
+        df = column_rename(df, columns_map)
+        df = issue_delete(df, file, issue_map)
+        
+        if def_file is not None:
+            df = name_dict(df, file, dataset_path, def_file)
+        df = null_convert(df)
+        df = ID_filter(df_icu, df)
+        df = time_filter(df_icu, df, src_data, data_type)
 
-            if item == 'lab':
-                lab = df.copy()
-            elif item =='med':
-                med = df.copy()
-                #med = med_align(src, med)
-            elif item =='inf':
-                inf = df.copy()
+        if table == 'lab':
+            lab = df.copy()
+        elif table =='med':
+            med = df.copy()
+        elif table =='inf':
+            inf = df.copy()
 
         del(df)
-        print('data preparation finish for three items \n second preparation start soon..')
-
-        df = merge_df(lab, med ,inf)
-        print('lab med inf three categories merged in one!')
-        breakpoint()
-        df = sortbyoffset(df)
-        
-        df = list_prep(df, df_icu)
-        df = min_length(df, 5).reset_index(drop=True)
-        df['code_order'] = df['code_offset'].map(lambda x : offset2order(x))  
-        # sequence align with offset order
-
-        df['seq_len'] = df['code_name'].map(len)
-        #pad
-       
-        column_list = ['code_name', 'code_offset', 'value', 'uom', 'code_order']
-        if data_type == 'MICU':
-            for column in column_list:
-                df[column] = df[column].map(lambda x : pad(x, max_length))
-        
-        elif data_type == 'TotalICU':
-            df_short = df[df['seq_len'] <= max_length].reset_index(drop=True)
-            df_long = df[df['seq_len'] > max_length].reset_index(drop=True)
-           
-            for i, column in enumerate(column_list):
-                df_short[column] = df[column].map(lambda x : pad(x, max_length))  
-                df_long[column] = df[column].map(lambda x: sampling(x, max_length//3, max_length))
-
-            df_long = df_long.explode(column_list).reset_index(drop=True)
-            df = pd.concat([df_short, df_long], axis=0).reset_index(drop=True)
-            del df_short, df_long
-
-        print('Preprocessing completed.')    
-        print('Writing', '{}_df.pkl'.format(src), 'to', input_path)
-        df.to_pickle(os.path.join(input_path,'{}_df.pkl'.format(src)))
+    print('data preparation finish for three tables \n second preparation start soon..')
     
-    df_mm = pd.read_pickle(os.path.join(input_path,'mimic_df.pkl'.format(src)))
-    df_ei = pd.read_pickle(os.path.join(input_path,'eicu_df.pkl'.format(src)))
-    df_pooled = pd.concat((df_mm,df_ei), axis=0).reset_index(drop=True)
-    df_pooled.to_pickle(os.path.join(input_path,'pooled_df.pkl'.format(src)))
-    del df_mm, df_ei, df_pooled                  
+    df = merge_df(lab, med ,inf)
+    print('lab med inf three categories merged in one!')
+    
+    df = sortbyoffset(df)
+    df = list_prep(df, df_icu)
+    df = min_length(df, event_min_length).reset_index(drop=True)
+    
+    df['code_order'] = df['code_offset'].map(lambda x : offset2order(x))  
+    # sequence align with offset order
+    df['seq_len'] = df['code_name'].map(len)
+    
+    column_list = ['code_name', 'code_offset', 'value', 'uom', 'code_order']
+    if data_type == 'predict':
+        for column in column_list:
+            df[column] = df[column].map(lambda x : pad(x, event_max_length))
+   
+    elif data_type == 'pretrain':
+        df_short = df[df['seq_len'] <= event_max_length].reset_index(drop=True)
+        df_long = df[df['seq_len'] > event_max_length].reset_index(drop=True)
+        
+        for i, column in enumerate(column_list):
+            df_short[column] = df[column].map(lambda x : pad(x, event_max_length))  
+            df_long[column] = df[column].map(lambda x: sampling(x, event_max_length//3, event_max_length))
 
-
+        df_long = df_long.explode(column_list).reset_index(drop=True)
+        df = pd.concat([df_short, df_long], axis=0).reset_index(drop=True)
+        del df_short, df_long
+        
+    
+    print('Preprocessing completed.')    
+    print('Writing', '{}_df.pkl'.format(src_data), 'to', dest_path)
+    df.to_pickle(os.path.join(dest_path, f'{src_data}_df.pkl'))
+    del(df)
         
