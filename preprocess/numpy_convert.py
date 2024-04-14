@@ -172,7 +172,7 @@ def convert2numpy(dest_path, src_data, value_mode, data_type):
     np.save(os.path.join(save_path, f'token_type_ids_{value_mode}.npy'), np.array(df['token_type_ids'])) 
     np.save(os.path.join(save_path, f'attention_mask_{value_mode}.npy'), np.array(df['attention_mask'])) 
 
-    if value_mode == 'VC':
+    if value_mode == 'VC' and data_type == 'predict':
         #Value for Value Concat(VC)
         value = np.array([df['value']])
         np.save(os.path.join(save_path, 'value.npy'), value[0])
