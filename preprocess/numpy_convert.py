@@ -151,7 +151,7 @@ def convert2numpy(dest_path, src_data, value_mode, data_type):
     np.save(os.path.join(save_path, codeemb_feature_save_name), array)
 
     if data_type == 'pretrain':
-        keys_to_remove = ['[PAD]', '[MASK]', '[CLS]']
+        keys_to_remove = ['[PAD]', '[MASK]', '[CLS]', '0.0']
         for key in keys_to_remove:
             vocab.pop(key, None) 
         df= pd.DataFrame({'code_name': [list(vocab.keys())]})
@@ -228,10 +228,24 @@ def pooled_data_generation(
                 os.path.join(dest_path, 'eicu', f'{target}_{value_mode}.npy'),
                 allow_pickle=True
                 )
+            
             if data_type == 'predict':
+                dim_align = max(mimic_text_input[0].shape[1], eicu_text_input[0].shape[1])
+
+                # Padding the tensors to have the same sequence length
+                for i in range(len(mimic_text_input)):
+                    mimic_text_input[i] = torch.nn.functional.pad(
+                        mimic_text_input[i], (0, dim_align - mimic_text_input[i].shape[1])
+                        )
+                for i in range(len(eicu_text_input)):
+                    eicu_text_input[i] = torch.nn.functional.pad(
+                        eicu_text_input[i], (0, dim_align - eicu_text_input[i].shape[1])
+                        )
+
                 pooled_text_input = np.concatenate(
                     [mimic_text_input, eicu_text_input], axis=0
                     )
+                
             elif data_type =='pretrain':
                 mimic_text_input = mimic_text_input[0]
                 eicu_text_input = eicu_text_input[0]

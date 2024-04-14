@@ -340,7 +340,7 @@ class MLMTokenizedDataset(BaseDataset):
         token_type_id = torch.LongTensor(self.token_type_ids[index])
         attn_mask = torch.LongTensor(self.attention_mask[index])
 
-        input_ids, mlm_labels = self.mask_tokens(input_ids, special_tokens_mask=None)
+        input_ids, mlm_labels = self.mask_tokens(input_ids.clone(), special_tokens_mask=None)
         return {
             'input_ids': input_ids,
             'token_type_ids': token_type_id,
