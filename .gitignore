@@ -1,3 +1,7 @@
+# data (due to size issues)
+data_input_path/
+data_output_path/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

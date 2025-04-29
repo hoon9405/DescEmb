@@ -37,6 +37,7 @@ def get_parser():
 
     parser.add_argument('--data_type', type=str, choices=['predict', 'pretrain'], default='predict')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--memory_efficient', action='store_true')
     return parser
 
 def main():
@@ -190,7 +191,8 @@ def main():
             args.event_max_length,
             args.event_min_length,
             args.data_type,
-            args.debug
+            args.debug,
+            args.memory_efficient
         )
         
         label_npy_file(args.dest_path, args.src_data, args.target_tasks)

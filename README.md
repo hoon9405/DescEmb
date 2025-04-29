@@ -26,24 +26,25 @@ First, download the dataset from these links:
 Second, make directory sturcture like below:
 ```
 data_input_path
-├─ mimic
-│  ├─ ADMISSIONS.csv
-│  ├─ PATIENTS.csv
-│  ├─ ICUSYAYS.csv
-│  ├─ LABEVENTES.csv
-│  ├─ PRESCRIPTIONS.csv
-│  ├─ PROCEDURES.csv
-│  ├─ INPUTEVENTS_CV.csv
-│  ├─ INPUTEVENTS_MV.csv
-│  ├─ D_ITEMDS.csv
-│  ├─ D_ICD_PROCEDURES.csv
-│  └─ D_LABITEMBS.csv
 ├─ eicu
 │  ├─ diagnosis.csv
 │  ├─ infusionDrug.csv
 │  ├─ lab.csv
 │  ├─ medication.csv
 │  └─ patient.csv
+├─ mimic
+│  ├─ ADMISSIONS.csv
+│  ├─ D_ICD_PROCEDURES.csv
+│  ├─ D_ITEMS.csv
+│  ├─ D_LABITEMBS.csv
+│  ├─ DIAGNOSES_ICD.csv
+│  ├─ ICUSTAYS.csv
+│  ├─ INPUTEVENTS_CV.csv
+│  ├─ INPUTEVENTS_MV.csv
+│  ├─ LABEVENTS.csv
+│  ├─ PATIENTS.csv
+│  ├─ PRESCRIPTIONS.csv
+│  └─ PROCEDURES.csv
 ├─ ccs_multi_dx_tool_2015.csv
 └─ icd10cmtoicd9gem.csv
 
