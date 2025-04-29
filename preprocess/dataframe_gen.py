@@ -5,16 +5,65 @@ import datetime
 import re
 import random
 import tqdm
+import gc
 
-def mimic_inf_merge(file, input_path):
-    df_inf_mv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_MV'+'.csv'))
-    df_inf_cv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_CV'+'.csv'))
-    df_inf_mv_mm['CHARTTIME'] = df_inf_mv_mm['STARTTIME']
-    df_inf_mm = pd.concat([df_inf_mv_mm, df_inf_cv_mm], axis=0).reset_index(drop=True)
-    print('mimic INPUTEVENTS merge!') 
-    
-    return df_inf_mm
+def mimic_inf_merge(file, input_path, memory_efficient=False):
+    if memory_efficient:
+        big_df = None  # Will store progressively built large dataframe
+        chunk_counter = 0
+        temp_chunks = []  # Temporary small chunk storage
 
+        for file_name in ['INPUTEVENTS_MV.csv', 'INPUTEVENTS_CV.csv']:
+            print(f"Processing {file_name}...")
+            chunk_iter = pd.read_csv(os.path.join(input_path, file_name), chunksize=25_000)
+
+            for chunk in chunk_iter:
+                if file_name == 'INPUTEVENTS_MV.csv':
+                    chunk['CHARTTIME'] = chunk['STARTTIME']
+
+                temp_chunks.append(chunk)
+                chunk_counter += 1
+
+                if chunk_counter % 3 == 0:
+                    print(f"Merging {len(temp_chunks)} chunks together...")
+
+                    partial_df = pd.concat(temp_chunks, axis=0).reset_index(drop=True)
+                    temp_chunks = []
+
+                    if big_df is None:
+                        big_df = partial_df
+                    else:
+                        big_df = pd.concat([big_df, partial_df], axis=0).reset_index(drop=True)
+
+                    # Force immediate memory cleanup
+                    del partial_df
+                    gc.collect()
+
+            if temp_chunks:
+                print(f"Merging final {len(temp_chunks)} chunks from {file_name}...")
+                partial_df = pd.concat(temp_chunks, axis=0).reset_index(drop=True)
+                temp_chunks = []
+                chunk_counter = 0
+
+                if big_df is None:
+                    big_df = partial_df
+                else:
+                    big_df = pd.concat([big_df, partial_df], axis=0).reset_index(drop=True)
+
+                del partial_df
+                gc.collect()
+
+        print('Merge complete!')
+        return big_df
+
+    else:
+        df_inf_mv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_MV'+'.csv'))
+        df_inf_cv_mm = pd.read_csv(os.path.join(input_path, 'INPUTEVENTS_CV'+'.csv'))
+        df_inf_mv_mm['CHARTTIME'] = df_inf_mv_mm['STARTTIME']
+        df_inf_mm = pd.concat([df_inf_mv_mm, df_inf_cv_mm], axis=0).reset_index(drop=True)
+        print('mimic INPUTEVENTS merge!') 
+        
+        return df_inf_mm
 
 def eicu_med_revise(file, input_path):
     df = pd.read_csv(os.path.join(input_path, file+'.csv'))
@@ -242,7 +291,8 @@ def preprocess(dataset_path,
                event_max_length,
                event_min_length,
                data_type,
-               debug
+               debug,
+               memory_efficient
                 ):
 
     
@@ -260,7 +310,7 @@ def preprocess(dataset_path,
             columns_map = columns_map_dict[file] # the files from mimic that we want
         
         if src_data =='mimiciii' and table =='inf':
-            df = mimic_inf_merge(file, dataset_path)
+            df = mimic_inf_merge(file, dataset_path, memory_efficient)
         elif src_data=='eicu' and table=='med':
             df = eicu_med_revise(file, dataset_path)
         elif src_data=='eicu' and table=='inf':
