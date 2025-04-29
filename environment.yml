@@ -60,6 +60,7 @@ dependencies:
   - zipp=3.17.0=pyhd8ed1ab_0
   - zlib=1.2.13=h5eee18b_0
   - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu118
       - certifi==2024.2.2
       - charset-normalizer==3.3.2
       - easydict==1.13
